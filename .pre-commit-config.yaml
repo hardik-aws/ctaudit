@@ -1,0 +1,41 @@
+# Terraform checks for iam/ and deploy/terraform/. Install with
+# `pre-commit install`; run everything with `pre-commit run --all-files`.
+# Go code is checked by `make check`, the Helm chart by `make helm-lint`.
+repos:
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.109.1
+    hooks:
+      - id: terraform_fmt
+        files: ^(iam|deploy/terraform)/
+      - id: terraform_validate
+        files: ^(iam|deploy/terraform)/
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+          - --tf-init-args=-backend=false
+      - id: terraform_tflint
+        files: ^(iam|deploy/terraform)/
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_trivy
+        files: ^(iam|deploy/terraform)/
+        args:
+          - --args=--severity=MEDIUM,HIGH,CRITICAL
+      - id: terraform_checkov
+        files: ^(iam|deploy/terraform)/
+        args:
+          - --args=--quiet
+          - --args=--framework=terraform
+      - id: terraform_docs
+        files: ^(iam|deploy/terraform)/
+        args:
+          - --args=--config=.terraform-docs.yml
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+        files: ^(iam|deploy/terraform)/
+      - id: trailing-whitespace
+        files: ^(iam|deploy/terraform)/
+      - id: detect-private-key

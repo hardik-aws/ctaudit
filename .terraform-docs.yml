@@ -1,0 +1,24 @@
+# Generates the Inputs/Outputs tables between the BEGIN_TF_DOCS markers in
+# each Terraform directory's README.md. Run by the terraform_docs
+# pre-commit hook, or by hand: terraform-docs -c .terraform-docs.yml <dir>
+formatter: markdown table
+
+output:
+  file: README.md
+  mode: inject
+
+sort:
+  enabled: true
+  by: required
+
+settings:
+  anchor: false
+  default: true
+  escape: true
+  hide-empty: true
+  html: false
+  indent: 3
+  lockfile: false
+  required: true
+  sensitive: true
+  type: true

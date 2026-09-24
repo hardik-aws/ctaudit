@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELB Access Logs {{.Since}} .. {{.Until}}</title>
+<style>{{elbcss}}</style>
+</head>
+<body>
+<header class="topbar">
+<div class="topbar-in">
+<div class="brand">ELB Access Logs<small>{{.Since}} .. {{.Until}}</small></div>
+<nav aria-label="Sections">
+<a href="#overview">Overview</a>
+<a href="#hourly">Hourly</a>
+{{if .Tables}}<a href="#breakdown">Breakdown</a>{{end}}
+{{if .Conns.Total}}<a href="#tls">TLS</a>{{end}}
+<a href="#requests">Requests</a>
+{{if .ConnMatches}}<a href="#connections">Connections</a>{{end}}
+{{if .Res.Errors}}<a href="#errors">Errors</a>{{end}}
+</nav>
+</div>
+</header>
+<main>
+
+<section id="overview" aria-labelledby="overview-h">
+<h1 id="overview-h">ELB Access Logs</h1>
+<dl class="facts">
+<div><dt>Bucket</dt><dd class="mono">{{.Meta.Bucket}}</dd></div>
+<div><dt>Window (UTC)</dt><dd>{{.Since}} .. {{.Until}} · {{.Days}} days</dd></div>
+<div><dt>Accounts</dt><dd class="mono">{{join .Meta.Accounts}}</dd></div>
+<div><dt>Regions</dt><dd>{{join .Meta.Regions}}</dd></div>
+<div><dt>First / last request</dt><dd>{{ts .Summary.First}} · {{ts .Summary.Last}}</dd></div>
+<div><dt>Scan</dt><dd>{{num .Res.ObjectsScanned}} objects · {{num .Res.RecordsRead}} requests · {{num .Res.ConnsRead}} connections</dd></div>
+<div><dt>Matched</dt><dd>{{num .Res.MatchedRecords}} requests · {{num .Res.MatchedConns}} connections</dd></div>
+<div><dt>Generated</dt><dd>{{.Generated}} · took {{.Elapsed}}</dd></div>
+</dl>
+</section>
+
+<section aria-label="Request totals">
+<div class="kpis">
+<div class="kpi"><div class="v">{{num .Summary.Total}}</div><div class="k">Requests</div></div>
+<div class="kpi{{if .Summary.Errors5xx}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Errors5xx}}</div><div class="k">5xx responses</div></div>
+<div class="kpi{{if .Summary.Errors4xx}} warn{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Errors4xx}}</div><div class="k">4xx responses</div></div>
+<div class="kpi{{if .WeakTLSRequests}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .WeakTLSRequests}}</div><div class="k">Weak TLS requests</div><div class="h">SSLv3, TLSv1, TLSv1.1</div></div>
+<div class="kpi"><div class="v">{{latency .Summary.AvgLatency}}</div><div class="k">Latency avg</div></div>
+<div class="kpi"><div class="v">{{latency .Summary.LatencyMax}}</div><div class="k">Latency max</div></div>
+<div class="kpi"><div class="v">{{bytes .Summary.ReceivedBytes}}</div><div class="k">Received</div></div>
+<div class="kpi"><div class="v">{{bytes .Summary.SentBytes}}</div><div class="k">Sent</div></div>
+<div class="kpi"><div class="v">{{num .DistinctClientIPs}}</div><div class="k">Distinct client IPs</div></div>
+</div>
+</section>
+
+<section id="hourly" aria-labelledby="hourly-h">
+<h2 id="hourly-h">Requests by hour (UTC){{if .HourPeak.Count}} <span class="sub">peak {{.HourPeak.Key}}:00 · {{num .HourPeak.Count}} requests</span>{{end}}</h2>
+<div class="panel chart">
+<div class="hours" role="img" aria-label="Requests per UTC hour">
+{{range .Hours}}<div class="hour" title="{{.Key}}:00 UTC — {{num .Count}} requests"{{if $.HourPeak.Count}}{{if eq .Key $.HourPeak.Key}} data-peak{{end}}{{end}}><span class="tip">{{.Key}}:00 · {{num .Count}}</span><div class="col" style="height:{{.Pct}}%"></div></div>
+{{end}}</div>
+<div class="hour-labels" aria-hidden="true">{{range .Hours}}<span>{{.Key}}</span>{{end}}</div>
+</div>
+</section>
+
+{{if .Tables}}<section id="breakdown" aria-labelledby="breakdown-h">
+<h2 id="breakdown-h">Request breakdown <span class="sub">top values by request count</span></h2>
+<div class="grid">
+{{range .Tables}}{{template "rank" .}}
+{{end}}</div>
+</section>{{end}}
+
+{{if .Conns.Total}}<section id="tls" aria-labelledby="tls-h">
+<h2 id="tls-h">TLS connections <span class="sub">from connection logs · first {{ts .Conns.First}} · last {{ts .Conns.Last}}</span></h2>
+<div class="kpis">
+<div class="kpi"><div class="v">{{num .Conns.Total}}</div><div class="k">Connections</div></div>
+<div class="kpi"><div class="v">{{num .Conns.TLS}}</div><div class="k">TLS connections</div></div>
+<div class="kpi{{if .Conns.HandshakeFailed}} crit{{else}} ok{{end}}"><div class="v">{{num .Conns.HandshakeFailed}}</div><div class="k">Failed TLS handshakes (443)</div></div>
+<div class="kpi{{if .WeakTLSConns}} crit{{else}} ok{{end}}"><div class="v">{{num .WeakTLSConns}}</div><div class="k">Weak TLS connections</div><div class="h">SSLv3, TLSv1, TLSv1.1</div></div>
+<div class="kpi"><div class="v">{{latency .Conns.AvgHandshake}}</div><div class="k">Handshake avg</div></div>
+<div class="kpi"><div class="v">{{latency .Conns.HandshakeMax}}</div><div class="k">Handshake max</div></div>
+<div class="kpi"><div class="v">{{num .DistinctConnClientIPs}}</div><div class="k">Distinct client IPs</div></div>
+</div>
+<div class="grid" style="margin-top:14px">
+{{range .ConnTables}}{{template "rank" .}}
+{{end}}</div>
+</section>{{end}}
+
+<section id="requests" aria-labelledby="requests-h">
+<h2 id="requests-h">Requests (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
+<div class="panel">
+{{if .Matches}}<div class="tools">
+<input type="search" id="req-filter" data-filter="req-table" placeholder="Filter rows: IP, status, path, cipher…" aria-label="Filter requests">
+<span class="count" data-count="req-table" aria-live="polite"></span>
+<span class="spacer"></span>
+<div class="seg" role="group" aria-label="Columns" data-cols="req-wrap"><button type="button" data-mode="key" aria-pressed="false">Key columns</button><button type="button" data-mode="all" aria-pressed="true">All columns</button></div>
+</div>
+<div class="scroll" id="req-wrap"><table class="data" id="req-table">
+<thead><tr><th>Time</th><th>Client</th><th>ELB status</th><th>Target status</th><th>Method</th><th>Host / SNI</th><th>URL</th><th>Total latency</th><th>TLS protocol</th><th>TLS cipher</th><th>Error reason</th><th>Target</th><th>User agent</th><th class="x">Kind</th><th class="x">Type</th><th class="x">Load balancer</th><th class="x">Listener</th><th class="x">Request time</th><th class="x">Target time</th><th class="x">Response time</th><th class="x">Received</th><th class="x">Sent</th><th class="x">Domain (SNI)</th><th class="x">Protocol</th><th class="x">TLS key exchange</th><th class="x">TLS handshake</th><th class="x">TLS alert</th><th class="x">ALPN front / back</th><th class="x">Action</th><th class="x">Rule</th><th class="x">Redirect</th><th class="x">Classification</th><th class="x">Target group</th><th class="x">Target list</th><th class="x">Target status list</th><th class="x">Certificate</th><th class="x">Trace ID</th><th class="x">Conn trace ID</th><th class="x">Request created</th></tr></thead>
+<tbody>
+{{range .Matches}}<tr><td class="t">{{ts .Time}}</td><td class="mono">{{.ClientIP}}{{if .ClientPort}}:{{.ClientPort}}{{end}}</td><td>{{template "val" .ELBStatus}}</td><td>{{template "val" .TargetStatus}}</td><td>{{dash .Method}}</td><td class="mono">{{dash .Host}}</td><td class="mono wrap">{{dash .URL}}</td><td class="n" data-sort="{{secs .Latency}}">{{latency .Latency}}</td><td>{{template "val" .SSLProtocol}}</td><td class="mono">{{dash .SSLCipher}}</td><td>{{if .ErrorReason}}<span class="pill crit">{{.ErrorReason}}</span>{{else}}-{{end}}</td><td class="mono">{{dash .Target}}</td><td class="wrap">{{dash .UserAgent}}</td><td class="x">{{.Kind}}</td><td class="x">{{dash .Type}}</td><td class="x mono">{{.LB}}</td><td class="x">{{dash .Listener}}</td><td class="x n" data-sort="{{secs .RequestTime}}">{{latency .RequestTime}}</td><td class="x n" data-sort="{{secs .TargetTime}}">{{latency .TargetTime}}</td><td class="x n" data-sort="{{secs .ResponseTime}}">{{latency .ResponseTime}}</td><td class="x n" data-sort="{{.ReceivedBytes}}">{{num64 .ReceivedBytes}}</td><td class="x n" data-sort="{{.SentBytes}}">{{num64 .SentBytes}}</td><td class="x mono">{{dash .DomainName}}</td><td class="x">{{dash .Protocol}}</td><td class="x">{{dash .TLSKeyExchange}}</td><td class="x n" data-sort="{{secs .TLSHandshakeTime}}">{{latency .TLSHandshakeTime}}</td><td class="x">{{dash .IncomingTLSAlert}}</td><td class="x">{{dash .ALPNFrontend}} / {{dash .ALPNBackend}}</td><td class="x">{{dash .Actions}}</td><td class="x">{{dash .MatchedRulePriority}}</td><td class="x mono">{{dash .RedirectURL}}</td><td class="x">{{dash .Classification}}{{if .ClassificationReason}} ({{.ClassificationReason}}){{end}}</td><td class="x mono">{{dash .TargetGroupARN}}</td><td class="x mono">{{dash .TargetList}}</td><td class="x">{{dash .TargetStatusList}}</td><td class="x mono">{{dash .CertARN}}</td><td class="x mono">{{dash .TraceID}}</td><td class="x mono">{{dash .ConnTraceID}}</td><td class="x t">{{ts .RequestCreationTime}}</td></tr>
+{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">No matching requests in this window.</p>{{end}}
+</div>
+</section>
+
+{{if .ConnMatches}}<section id="connections" aria-labelledby="connections-h">
+<h2 id="connections-h">Connections (showing {{len .ConnMatches}} of {{num .Res.MatchedConns}}, earliest first)</h2>
+<div class="panel">
+<div class="tools">
+<input type="search" id="conn-filter" data-filter="conn-table" placeholder="Filter rows: IP, protocol, “failed”…" aria-label="Filter connections">
+<span class="count" data-count="conn-table" aria-live="polite"></span>
+</div>
+<div class="scroll"><table class="data" id="conn-table">
+<thead><tr><th>Time</th><th>Client</th><th>Listener</th><th>TLS protocol</th><th>TLS cipher</th><th>TLS key exchange</th><th>TLS handshake</th><th>Verify status</th><th>Load balancer</th><th>Client cert subject</th><th>Client cert validity</th><th>Client cert serial</th><th>Conn trace ID</th></tr></thead>
+<tbody>
+{{range .ConnMatches}}<tr><td class="t">{{ts .Time}}</td><td class="mono">{{.ClientIP}}{{if .ClientPort}}:{{.ClientPort}}{{end}}</td><td>{{dash .Listener}}</td><td>{{if .HandshakeFailed}}<span class="pill crit">handshake failed</span>{{else}}{{template "val" .SSLProtocol}}{{end}}</td><td class="mono">{{dash .SSLCipher}}</td><td>{{dash .TLSKeyExchange}}</td><td class="n" data-sort="{{secs .TLSHandshakeTime}}">{{latency .TLSHandshakeTime}}</td><td>{{template "val" .TLSVerifyStatus}}</td><td class="mono">{{.LB}}</td><td class="mono">{{dash .ClientCertSubject}}</td><td>{{dash .ClientCertValidity}}</td><td class="mono">{{dash .ClientCertSerial}}</td><td class="mono">{{dash .ConnTraceID}}</td></tr>
+{{end}}</tbody>
+</table></div>
+</div>
+</section>{{end}}
+
+{{if .Res.Errors}}<section id="errors" aria-label="Errors">
+<details class="panel errors">
+<summary>Errors ({{len .Res.Errors}}) <span class="sub">objects or lines that could not be read</span></summary>
+<ul>{{range .Res.Errors}}<li class="mono">{{.}}</li>{{end}}</ul>
+</details>
+</section>{{end}}
+
+<p class="note">Tip: click a column header to sort; use the filter box to narrow rows (space-separated terms must all match). Colours flag 5xx, weak TLS and failed handshakes in red, 4xx in amber.</p>
+</main>
+<script>{{elbjs}}</script>
+</body>
+</html>
+{{define "val"}}{{$t := tone .}}{{if $t}}<span class="pill {{$t}}">{{.}}</span>{{else}}{{dash .}}{{end}}{{end}}
+{{define "rank"}}<div class="panel">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} shown</span></div>
+<table class="rank">
+<thead><tr><th scope="col">{{.KeyHeader}}</th><th scope="col" class="cnt">Count</th><th scope="col"><span class="sr">share</span></th></tr></thead>
+<colgroup><col><col style="width:84px"><col style="width:26%"></colgroup>
+<tbody>
+{{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{template "val" .Key}}</td><td class="cnt">{{num .Count}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}

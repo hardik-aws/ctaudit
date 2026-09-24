@@ -1,0 +1,132 @@
+{{- include "ctaudit.validate" . }}
+{{- $secretName := include "ctaudit.lokiSecretName" . }}
+{{- $secretSum := include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+{{- range $s := .Values.scanners }}
+{{- $name := include "ctaudit.scannerName" (dict "root" $ "scanner" $s) }}
+{{- $debug := $.Values.debug }}
+{{- if hasKey $s "debug" }}{{ $debug = $s.debug }}{{ end }}
+{{- $logFormat := default $.Values.logFormat $s.logFormat }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ctaudit.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $s.name }}
+spec:
+  # Exactly one pod per scanner: two would send every line to Loki twice.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ctaudit.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $s.name }}
+  template:
+    metadata:
+      annotations:
+        checksum/secret: {{ $secretSum }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "ctaudit.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $s.name }}
+    spec:
+      serviceAccountName: {{ include "ctaudit.serviceAccountName" $ }}
+      # The pod never talks to the Kubernetes API. The IRSA webhook still
+      # mounts its own projected token for AWS.
+      automountServiceAccountToken: false
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ctaudit
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - serve
+            - {{ $s.subcommand }}
+            - --bucket
+            - {{ default $.Values.aws.bucket $s.bucket | quote }}
+            - --accounts
+            - {{ join "," (default $.Values.aws.accounts $s.accounts) | quote }}
+            - --regions
+            - {{ join "," (default $.Values.aws.regions $s.regions) | quote }}
+            - --interval
+            - {{ default "15m" $s.interval | quote }}
+            - --lookback
+            - {{ default "24h" $s.lookback | quote }}
+            - --listen
+            - ":8080"
+            {{- with $.Values.aws.bucketRegion }}
+            - --bucket-region
+            - {{ . | quote }}
+            {{- end }}
+            {{- with $.Values.loki.url }}
+            - --loki
+            - {{ . | quote }}
+            {{- with $.Values.loki.tenant }}
+            - --loki-tenant
+            - {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $debug }}
+            - --debug
+            - --log-format
+            - {{ default "text" $logFormat | quote }}
+            {{- end }}
+            {{- range $s.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- with $.Values.aws.bucketRegion }}
+          env:
+            - name: AWS_REGION
+              value: {{ . | quote }}
+          {{- end }}
+          {{- if $secretName }}
+          envFrom:
+            - secretRef:
+                name: {{ $secretName }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml (default $.Values.resources $s.resources) | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

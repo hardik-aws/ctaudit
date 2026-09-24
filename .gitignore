@@ -1,0 +1,9 @@
+/ctaudit
+/ctaudit-report.html
+/elb-report.html
+/*.pdf
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate*
+**/terraform.tfvars
+.DS_Store

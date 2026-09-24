@@ -1,0 +1,47 @@
+# Prometheus alert rules for ctaudit. Load this file through rule_files in
+# prometheus.yml, or wrap the groups in a PrometheusRule for the Prometheus
+# Operator. The metrics come from the Pushgateway, so they carry the
+# Pushgateway's own job label unless honor_labels is set; these rules match
+# on the subcommand label, which ctaudit always sets.
+groups:
+  - name: ctaudit
+    rules:
+      - alert: CtauditCriticalFinding
+        expr: ctaudit_findings{severity="critical"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "ctaudit found {{ $value }} critical CloudTrail finding(s)"
+          description: >-
+            The last ctaudit cloudtrail run reported critical findings. Query
+            Loki with {job="ctaudit", kind="finding", severity="critical"} | json
+            for the details.
+
+      - alert: CtauditScanErrors
+        expr: ctaudit_scan_errors > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "ctaudit {{ $labels.subcommand }} could not read {{ $value }} object(s)"
+          description: >-
+            The last scan was partial, so its results are incomplete. Check the
+            run's stderr for the failing keys; the usual causes are missing
+            s3:GetObject or kms:Decrypt permissions.
+
+      - alert: CtauditNoRecentSuccess
+        expr: time() - ctaudit_last_success_timestamp_seconds > 26 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "ctaudit {{ $labels.subcommand }} has not completed a clean run in 26 hours"
+          description: >-
+            Either the scheduled job stopped running, or every recent run had
+            scan errors or a failed Loki push.
+
+      - alert: CtauditNeverSucceeded
+        expr: absent(ctaudit_last_success_timestamp_seconds)
+        for: 26h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No ctaudit run has ever reported success to the Pushgateway"

@@ -1,0 +1,48 @@
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/ctaudit
+  tag: test
+
+serviceAccount:
+  roleArn: arn:aws:iam::123456789012:role/ctaudit-reader
+
+aws:
+  bucket: example-logging-bucket
+  bucketRegion: us-east-1
+  accounts: ["111122223333", "444455556666"]
+  regions: ["us-east-1", "eu-west-1"]
+
+loki:
+  url: http://loki-gateway.monitoring.svc
+  tenant: security
+  auth:
+    token: test-token
+
+scanners:
+  - name: cloudtrail
+    subcommand: cloudtrail
+    args: ["--org-id", "o-abc123"]
+  - name: alb
+    subcommand: elb
+    interval: 5m
+    lookback: 6h
+    bucket: example-alb-logs
+    regions: ["us-east-1"]
+    args: ["--lb", "tiles"]
+    debug: true
+    logFormat: json
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+
+prometheusRule:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack

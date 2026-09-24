@@ -1,0 +1,52 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+region       = "us-east-1"
+aws_profile  = "gsm-shared"
+cluster_name = "my-eks-cluster"
+namespace    = "ctaudit"
+
+image_repository = "702656214742.dkr.ecr.us-east-1.amazonaws.com/ctaudit"
+image_tag        = "0.1.1"
+
+log_buckets = {
+  cloudtrail = {
+    name = "org-cloudtrail-logs"
+    # kms_key_arn = "arn:aws:kms:us-east-1:111122223333:key/..."
+  }
+  alb = {
+    name = "gsm-shared-services-logging-bucket"
+  }
+}
+
+bucket        = "org-cloudtrail-logs"
+bucket_region = "us-east-1"
+accounts      = ["702656214742"]
+regions       = ["us-east-1"]
+
+scanners = [
+  {
+    name       = "cloudtrail"
+    subcommand = "cloudtrail"
+    # args     = ["--org-id", "o-abc123"]
+  },
+  {
+    name       = "alb"
+    subcommand = "elb"
+    bucket     = "gsm-shared-services-logging-bucket"
+    interval   = "5m"
+    lookback   = "6h"
+  },
+]
+
+# loki_url             = "http://loki-gateway.monitoring"
+# loki_tenant          = "security"
+# loki_existing_secret = "ctaudit-loki"
+
+# prometheus_release_label = "kube-prometheus-stack"
+
+tags = {
+  Owner       = "team-devops"
+  Department  = "devops"
+  Project     = "shared-services"
+  Application = "app-ctaudit"
+  ManagedBy   = "terraform"
+}
