@@ -1,0 +1,78 @@
+version: 2
+
+project_name: ctaudit
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ctaudit
+    main: ./cmd/ctaudit
+    binary: ctaudit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: ctaudit
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+dockers:
+  - id: ctaudit-amd64
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    image_templates:
+      - "hardikaws/ctaudit:{{ .Version }}-amd64"
+    build_flag_templates:
+      - --platform=linux/amd64
+
+  - id: ctaudit-arm64
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    image_templates:
+      - "hardikaws/ctaudit:{{ .Version }}-arm64"
+    build_flag_templates:
+      - --platform=linux/arm64
+
+docker_manifests:
+  - name_template: "hardikaws/ctaudit:{{ .Version }}"
+    image_templates:
+      - "hardikaws/ctaudit:{{ .Version }}-amd64"
+      - "hardikaws/ctaudit:{{ .Version }}-arm64"
+  - name_template: "hardikaws/ctaudit:latest"
+    image_templates:
+      - "hardikaws/ctaudit:{{ .Version }}-amd64"
+      - "hardikaws/ctaudit:{{ .Version }}-arm64"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CloudTrail Audit {{.Since}} .. {{.Until}}</title>
+<style>{{css}}</style>
+</head>
+<body>
+<main>
+<h1>CloudTrail Audit</h1>
+<div class="meta">
+Bucket <span class="mono">{{.Meta.Bucket}}</span> · {{.Since}} .. {{.Until}} ({{.Days}} days)<br>
+Accounts: <span class="mono">{{join .Meta.Accounts}}</span> · Regions: {{join .Meta.Regions}}<br>
+Objects scanned {{num .Res.ObjectsScanned}} · Records read {{num .Res.RecordsRead}} · Matched {{num .Res.MatchedRecords}} · Elapsed {{.Elapsed}} · Generated {{.Generated}}
+</div>
+
+<div class="cards">
+<div class="card"><div class="v">{{num .Summary.TotalEvents}}</div><div class="k">Total events</div></div>
+<div class="card"><div class="v">{{num .Summary.WriteEvents}}</div><div class="k">Write events</div></div>
+<div class="card"><div class="v">{{num .Summary.ErrorEvents}}</div><div class="k">Error events</div></div>
+<div class="card"><div class="v">{{num .DistinctPrincipals}}</div><div class="k">Distinct principals</div></div>
+<div class="card"><div class="v">{{num .DistinctSourceIPs}}</div><div class="k">Distinct source IPs</div></div>
+</div>
+
+<h2>Findings ({{len .Res.Findings}})</h2>
+{{if .Res.Findings}}<div class="scroll"><table>
+<tr><th>Severity</th><th>Time</th><th>Rule</th><th>Actor</th><th>Account</th><th>Region</th><th>Detail</th><th>Event ID</th></tr>
+{{range .Res.Findings}}<tr><td><span class="badge sev-{{sev .Severity}}">{{.Severity}}</span></td><td class="t">{{ts .Time}}</td><td>{{.Rule}}</td><td class="mono">{{.Actor}}</td><td>{{.Account}}</td><td>{{.Region}}</td><td>{{.Detail}}</td><td class="mono">{{.EventID}}</td></tr>
+{{end}}</table></div>{{else}}<p class="note">No findings.</p>{{end}}
+{{if .Res.DroppedFindings}}<p class="note">{{num .Res.DroppedFindings}} further findings were dropped at the cap.</p>{{end}}
+
+<div class="grid">
+{{range .Tables}}<section>
+<h2>{{.Title}}</h2>
+<table>
+<tr><th>{{.KeyHeader}}</th><th>Events</th><th></th></tr>
+{{range .Rows}}<tr><td class="mono">{{.Key}}</td><td class="n">{{num .Count}}</td><td class="barcell"><div class="bar" style="width:{{.Pct}}%"></div></td></tr>
+{{end}}</table>
+</section>
+{{end}}</div>
+
+<h2>Activity by hour (UTC)</h2>
+<div class="hours">
+{{range .Hours}}<div class="hour" title="{{.Key}}:00 — {{.Count}} events"><div class="col" style="height:{{.Pct}}%"></div><div class="lbl">{{.Key}}</div></div>
+{{end}}</div>
+
+{{if .Meta.Narrowed}}<h2>Matching events (showing {{len .Res.Matches}} of {{num .Res.MatchedRecords}})</h2>
+<div class="scroll"><table>
+<tr><th>Time</th><th>Account</th><th>Region</th><th>Event name</th><th>Actor</th><th>Source IP</th><th>Error</th></tr>
+{{range .Res.Matches}}<tr><td class="t">{{ts .EventTime}}</td><td>{{.RecipientAccountID}}</td><td>{{.AWSRegion}}</td><td>{{.EventName}}</td><td class="mono">{{.Actor}}</td><td class="mono">{{.SourceIPAddress}}</td><td>{{.ErrorCode}}</td></tr>
+{{end}}</table></div>{{end}}
+
+{{if .Res.Errors}}<h2>Errors ({{len .Res.Errors}})</h2>
+<ul class="errors">{{range .Res.Errors}}<li class="mono">{{.}}</li>{{end}}</ul>{{end}}
+</main>
+</body>
+</html>

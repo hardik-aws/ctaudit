@@ -1,0 +1,19 @@
+ctaudit is running {{ len .Values.scanners }} scanner(s) in namespace {{ .Release.Namespace }}:
+{{- range $s := .Values.scanners }}
+  - {{ include "ctaudit.scannerName" (dict "root" $ "scanner" $s) }} ({{ $s.subcommand }}, every {{ default "15m" $s.interval }}, lookback {{ default "24h" $s.lookback }})
+{{- end }}
+
+The first scan starts at pod start and reads the whole lookback window.
+To look at one scanner:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ctaudit.scannerName" (dict "root" . "scanner" (first .Values.scanners)) }} 8080:{{ .Values.service.port }}
+  curl -s localhost:8080/metrics | grep ctaudit_scans_total
+  open http://localhost:8080/report
+
+The endpoints have no authentication. Keep the Services ClusterIP, and put
+an authenticating ingress in front of /report if it must leave the cluster.
+{{- if not .Values.serviceMonitor.enabled }}
+
+serviceMonitor.enabled is false, so Prometheus will not scrape /metrics
+unless you add a scrape config yourself.
+{{- end }}

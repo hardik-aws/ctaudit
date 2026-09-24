@@ -1,0 +1,20 @@
+{{- range $s := .Values.scanners }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ctaudit.scannerName" (dict "root" $ "scanner" $s) }}
+  labels:
+    {{- include "ctaudit.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $s.name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ctaudit.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $s.name }}
+  ports:
+    - name: http
+      port: {{ $.Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

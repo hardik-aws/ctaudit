@@ -1,0 +1,79 @@
+# Prometheus alert rules for ctaudit serve. These are the same rules the Helm
+# chart renders as a PrometheusRule (prometheusRule.enabled). Load this file
+# through rule_files in prometheus.yml when you run Prometheus without the
+# Operator. The serve metrics are scraped from /metrics, so the job label is
+# the scrape job; the selectors below assume it contains "ctaudit". The
+# one-shot Pushgateway rules are in ctaudit-alerts.yaml.
+groups:
+  - name: ctaudit-serve
+    rules:
+      - alert: CtauditCriticalFinding
+        expr: increase(ctaudit_findings_total{job=~".*ctaudit.*",severity="critical"}[30m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL CloudTrail finding from {{ $labels.pod }}"
+          description: >-
+            {{ $value | humanize }} critical rule hits in the last 30 minutes.
+            Open /report on the scanner or query Loki with
+            {kind="finding", severity="critical"} | json.
+
+      - alert: CtauditHighFinding
+        expr: increase(ctaudit_findings_total{job=~".*ctaudit.*",severity="high"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "HIGH CloudTrail finding from {{ $labels.pod }}"
+          description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
+
+      - alert: CtauditScanErrors
+        expr: increase(ctaudit_scan_errors_total{job=~".*ctaudit.*"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} could not read some log objects"
+          description: >-
+            {{ $value | humanize }} objects failed to read in the last hour. They
+            are retried on every tick. Check the pod log for the keys; the usual
+            causes are missing s3:GetObject or kms:Decrypt permissions.
+
+      - alert: CtauditScanFailing
+        expr: increase(ctaudit_scans_total{job=~".*ctaudit.*",result="failed"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} has failed scan ticks"
+          description: >-
+            A tick failed in the last hour: a list error, a cancelled scan, or a
+            failed Loki push. A failed tick commits nothing and is retried.
+
+      - alert: CtauditNoRecentSuccess
+        expr: time() - ctaudit_last_success_timestamp_seconds{job=~".*ctaudit.*"} > 3 * ctaudit_interval_seconds{job=~".*ctaudit.*"}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} has not completed a clean scan recently"
+          description: "The last tick without errors was {{ $value | humanizeDuration }} ago, more than three intervals."
+
+      # A pod that is scraped but has no last-success gauge has never finished
+      # a clean tick. The 2h hold covers the first scan after a restart.
+      - alert: CtauditNeverSucceeded
+        expr: (up{job=~".*ctaudit.*"} == 1) unless on (namespace, pod) ctaudit_last_success_timestamp_seconds{job=~".*ctaudit.*"}
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} has been up for 2h without a clean scan"
+          description: "The pod is scraped but has never finished a tick without errors."
+
+      - alert: CtauditELB5xx
+        expr: |
+          sum by (subcommand, namespace, pod) (rate(ctaudit_elb_requests_total{job=~".*ctaudit.*",status_class="5xx"}[15m]))
+            / sum by (subcommand, namespace, pod) (rate(ctaudit_elb_requests_total{job=~".*ctaudit.*"}[15m])) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of ELB requests seen by {{ $labels.pod }} are 5xx"
+          description: "5xx share is {{ $value | humanizePercentage }} over 15 minutes."

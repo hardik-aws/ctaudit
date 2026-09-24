@@ -1,0 +1,74 @@
+# Container image built with `make image` and pushed to your registry.
+image:
+  repository: ""            # required, e.g. <acct>.dkr.ecr.us-east-1.amazonaws.com/ctaudit
+  tag: ""                   # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  # IRSA role with the iam/cloudtrail-audit-reader policy attached. Required
+  # when create is true.
+  roleArn: ""
+
+# Defaults shared by every scanner.
+aws:
+  bucket: ""
+  bucketRegion: ""
+  accounts: []
+  regions: []
+
+loki:
+  url: ""                   # empty disables Loki
+  tenant: ""
+  # Name of an existing Secret with CTAUDIT_LOKI_TOKEN, or CTAUDIT_LOKI_USER
+  # and CTAUDIT_LOKI_PASSWORD. It is loaded with envFrom.
+  existingSecret: ""
+  # Or set token, or user and password, here and the chart renders the Secret.
+  auth: {}
+
+# One Deployment and Service per scanner. Each runs exactly one pod, because
+# two pods would send every line to Loki twice.
+scanners:
+  - name: cloudtrail
+    subcommand: cloudtrail  # cloudtrail | elb
+    interval: 15m
+    lookback: 24h
+    bucket: ""              # overrides aws.bucket
+    accounts: []            # overrides aws.accounts
+    regions: []             # overrides aws.regions
+    args: []                # extra flags, e.g. ["--org-id", "o-abc123"]
+    resources: {}           # overrides the top-level resources
+    # debug: true           # overrides the top-level debug
+    # logFormat: json       # overrides the top-level logFormat
+
+# Debug logging to the pod log: each prefix listed, each object read, each
+# Loki push, and each tick decision. Never credentials or record contents.
+# It is verbose; the first tick logs one line per object in the lookback.
+debug: false
+logFormat: text             # text | json
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+service:
+  port: 8080
+
+# Needs the Prometheus Operator CRDs.
+serviceMonitor:
+  enabled: false
+  interval: 60s
+  labels: {}                # e.g. release: kube-prometheus-stack
+
+prometheusRule:
+  enabled: false
+  labels: {}

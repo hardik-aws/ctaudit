@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListCloudTrailPrefixes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": ${jsonencode(bucket_arn)},
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ${jsonencode("${logs_path}/*")}
+        }
+      }
+    },
+    {
+      "Sid": "ReadCloudTrailObjects",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": ${jsonencode("${bucket_arn}/${logs_path}/*")}
+    }%{ if kms_key_arn != "" },
+    {
+      "Sid": "DecryptCloudTrailObjects",
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": ${jsonencode(kms_key_arn)},
+      "Condition": {
+        "StringLike": {
+          "kms:ViaService": "s3.*.amazonaws.com"
+        }
+      }
+    }%{ endif }
+  ]
+}

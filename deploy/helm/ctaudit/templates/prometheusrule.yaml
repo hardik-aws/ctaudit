@@ -1,0 +1,70 @@
+{{- if .Values.prometheusRule.enabled }}
+{{- $job := include "ctaudit.jobSelector" . }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ctaudit.fullname" . }}
+  labels:
+    {{- include "ctaudit.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: ctaudit-serve
+      rules:
+        - alert: CtauditCriticalFinding
+          expr: increase(ctaudit_findings_total{ {{- $job }},severity="critical"}[30m]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `CRITICAL CloudTrail finding from {{ $labels.pod }}` | quote }}
+            description: {{ `{{ $value | humanize }} critical rule hits in the last 30 minutes. Open /report on {{ $labels.service }} or query Loki for kind="finding".` | quote }}
+        - alert: CtauditHighFinding
+          expr: increase(ctaudit_findings_total{ {{- $job }},severity="high"}[30m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `HIGH CloudTrail finding from {{ $labels.pod }}` | quote }}
+            description: {{ `{{ $value | humanize }} high rule hits in the last 30 minutes.` | quote }}
+        - alert: CtauditScanErrors
+          expr: increase(ctaudit_scan_errors_total{ {{- $job }}}[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `{{ $labels.pod }} could not read some log objects` | quote }}
+            description: {{ `{{ $value | humanize }} objects failed to read in the last hour; they are retried on every tick. Check the pod log and the IAM role.` | quote }}
+        - alert: CtauditScanFailing
+          expr: increase(ctaudit_scans_total{ {{- $job }},result="failed"}[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `{{ $labels.pod }} has failed scan ticks` | quote }}
+            description: {{ `A tick failed in the last hour: a list error, a cancelled scan, or a failed Loki push. Nothing from a failed tick is committed; it is retried.` | quote }}
+        - alert: CtauditNoRecentSuccess
+          expr: time() - ctaudit_last_success_timestamp_seconds{ {{- $job }}} > 3 * ctaudit_interval_seconds{ {{- $job }}}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `{{ $labels.pod }} has not completed a clean scan recently` | quote }}
+            description: {{ `The last tick without errors was {{ $value | humanizeDuration }} ago, more than three intervals.` | quote }}
+        - alert: CtauditNeverSucceeded
+          expr: (up{ {{- $job }}} == 1) unless on (namespace, pod) ctaudit_last_success_timestamp_seconds{ {{- $job }}}
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `{{ $labels.pod }} has been up for 2h without a clean scan` | quote }}
+            description: {{ `The pod is scraped but has never finished a tick without errors.` | quote }}
+        - alert: CtauditELB5xx
+          expr: |
+            sum by (subcommand, namespace, pod) (rate(ctaudit_elb_requests_total{ {{- $job }},status_class="5xx"}[15m]))
+              / sum by (subcommand, namespace, pod) (rate(ctaudit_elb_requests_total{ {{- $job }}}[15m])) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `More than 5% of ELB requests seen by {{ $labels.pod }} are 5xx` | quote }}
+            description: {{ `5xx share is {{ $value | humanizePercentage }} over 15 minutes.` | quote }}
+{{- end }}
