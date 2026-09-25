@@ -46,3 +46,8 @@ prometheusRule:
   enabled: true
   labels:
     release: kube-prometheus-stack
+
+grafanaDashboards:
+  enabled: true
+  annotations:
+    grafana_folder: Security

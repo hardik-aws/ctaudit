@@ -1,0 +1,2376 @@
+{
+  "uid": "ctaudit-cloudtrail-report",
+  "title": "ctaudit / CloudTrail report",
+  "description": "The ctaudit CloudTrail HTML report rebuilt from the event and finding lines ctaudit ships to Loki (--loki, or serve cloudtrail). Loki stores lines at ship time, so the range must cover the scan runs, not the event times.",
+  "tags": [
+    "ctaudit",
+    "cloudtrail",
+    "loki"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ctaudit"
+      ],
+      "targetBlank": false,
+      "title": "ctaudit",
+      "type": "dashboards"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "loki",
+        "label": "Loki",
+        "query": "loki",
+        "current": {},
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "options": []
+      },
+      {
+        "type": "query",
+        "name": "job",
+        "label": "Job",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "job",
+          "stream": "",
+          "refId": "Var"
+        },
+        "definition": "label_values(job)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "query",
+        "name": "account",
+        "label": "Account",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "account",
+          "stream": "{job=~\"$job\", subcommand=\"cloudtrail\"}",
+          "refId": "Var"
+        },
+        "definition": "label_values({job=~\"$job\", subcommand=\"cloudtrail\"}, account)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "query",
+        "name": "region",
+        "label": "Region",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "region",
+          "stream": "{job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\"}",
+          "refId": "Var"
+        },
+        "definition": "label_values({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\"}, region)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "query",
+        "name": "severity",
+        "label": "Finding severity",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "severity",
+          "stream": "{job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\"}",
+          "refId": "Var"
+        },
+        "definition": "label_values({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\"}, severity)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "textbox",
+        "name": "principal",
+        "label": "Principal (regex)",
+        "description": "Regular expression on the actor ARN, invokedBy, userName or principalId.",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "event",
+        "label": "Event name (regex)",
+        "description": "Regular expression on the event name.",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "top",
+        "label": "Top N",
+        "query": "10,20,50",
+        "current": {
+          "text": "20",
+          "value": "20"
+        },
+        "hide": 0,
+        "options": [
+          {
+            "text": "10",
+            "value": "10",
+            "selected": false
+          },
+          {
+            "text": "20",
+            "value": "20",
+            "selected": true
+          },
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Summary",
+      "collapsed": false,
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Events",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 2,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Write events",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json readOnly=\"readOnly\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | readOnly=\"false\" or (readOnly!=\"true\" and eventName!=\"\" and eventName!~\"(Describe|Get|List|Lookup|Search|Query|Head|BatchGet|Scan|Select|Assume|Filter|Estimate|Validate|Preview|Simulate|Check|Test|View|Read|Discover|Resolve).*\") [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "readOnly=false, or no readOnly field and an event name that is not a read verb.",
+      "id": 3,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error events",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json errorCode=\"errorCode\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | errorCode!=\"\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 4,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Critical findings",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | severity=\"critical\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 5,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "High findings",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | severity=\"high\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 6,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Medium findings",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | severity=\"medium\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 7,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Low findings",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | severity=\"low\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 8,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by account",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (account) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{account}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the eventTime column.",
+      "id": 9,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Findings by severity",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (severity) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{severity}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the event_time column.",
+      "id": 10,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Findings",
+      "collapsed": false,
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Findings by rule",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (rule) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | rule!=\"\" | keep rule [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{rule}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Rule",
+              "Last *": "Findings"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Findings"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 12,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Findings by actor",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (actor) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | actor!=\"\" | keep actor [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{actor}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Actor",
+              "Last *": "Findings"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Findings"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 13,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Findings by account",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (account) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\" | keep account [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{account}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Account",
+              "Last *": "Findings"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Findings"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 14,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Findings (newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"cloudtrail\", kind=\"finding\", account=~\"$account\", severity=~\"$severity\"} | json actor=\"actor\", rule=\"rule\" | __error__=\"\" | actor=~\"$principal\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "severity",
+                "rule",
+                "actor",
+                "account",
+                "region",
+                "detail",
+                "event_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "severity": 1,
+              "rule": 2,
+              "actor": 3,
+              "account": 4,
+              "region": 5,
+              "detail": 6,
+              "event_id": 7
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "severity": "Severity",
+              "rule": "Rule",
+              "actor": "Actor",
+              "account": "Account",
+              "region": "Region",
+              "detail": "Detail",
+              "event_id": "Event ID"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the event_time column.",
+      "id": 15,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 10
+      }
+    },
+    {
+      "type": "row",
+      "title": "Activity",
+      "collapsed": false,
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top principals",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (actor) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | actor!=\"\" | keep actor [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{actor}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Principal",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 17,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top event names",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (eventName) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | eventName!=\"\" | keep eventName [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{eventName}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Event name",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 18,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top services",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (service) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json eventSource=\"eventSource\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | label_format service=`{{ trimSuffix \".amazonaws.com\" .eventSource }}` | service!=\"\" | keep service [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Service",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 19,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top error codes",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (errorCode) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json errorCode=\"errorCode\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | errorCode!=\"\" | keep errorCode [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{errorCode}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Error code",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 20,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top source IPs",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (sourceIPAddress) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json sourceIPAddress=\"sourceIPAddress\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | sourceIPAddress!=\"\" | keep sourceIPAddress [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{sourceIPAddress}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Source IP",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 21,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top user agents",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (userAgent) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json userAgent=\"userAgent\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | userAgent!=\"\" | keep userAgent [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{userAgent}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "User agent",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 22,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "By account",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (account) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | keep account [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{account}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Account",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 23,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "By region",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (region) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | keep region [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{region}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Region",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 24,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 49,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "By identity type",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (identityType) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json identityType=\"userIdentity.type\", arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | identityType!=\"\" | keep identityType [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{identityType}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Identity type",
+              "Last *": "Events"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Events"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 25,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 49,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Matching events",
+      "collapsed": false,
+      "id": 26,
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Events (newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "eventTime",
+                "recipientAccountId",
+                "awsRegion",
+                "eventSource",
+                "eventName",
+                "sourceIPAddress",
+                "errorCode",
+                "eventID",
+                "userAgent"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "eventTime": 0,
+              "recipientAccountId": 1,
+              "awsRegion": 2,
+              "eventSource": 3,
+              "eventName": 4,
+              "sourceIPAddress": 5,
+              "errorCode": 6,
+              "eventID": 7,
+              "userAgent": 8
+            },
+            "renameByName": {
+              "eventTime": "Time",
+              "recipientAccountId": "Account",
+              "awsRegion": "Region",
+              "eventSource": "Source",
+              "eventName": "Event",
+              "sourceIPAddress": "Source IP",
+              "errorCode": "Error",
+              "eventID": "Event ID",
+              "userAgent": "User agent"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the eventTime column.",
+      "id": 27,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 12
+      }
+    }
+  ]
+}

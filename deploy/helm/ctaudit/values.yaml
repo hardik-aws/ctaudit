@@ -72,3 +72,13 @@ serviceMonitor:
 prometheusRule:
   enabled: false
   labels: {}
+
+# The ELB and CloudTrail report dashboards (dashboards/*.json) as one
+# ConfigMap for the Grafana dashboard sidecar. They read the Loki lines the
+# scanners ship, so they need loki.url set.
+grafanaDashboards:
+  enabled: false
+  namespace: ""             # defaults to the release namespace
+  labels:
+    grafana_dashboard: "1"  # the sidecar's default label
+  annotations: {}           # e.g. grafana_folder: Security

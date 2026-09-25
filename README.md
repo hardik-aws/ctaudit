@@ -206,6 +206,13 @@ CTAUDIT_LOKI_TOKEN=... ./ctaudit cloudtrail --bucket org-trail --accounts 111122
 
 A bad URL, job name, or credential variable exits 2 before any S3 call. A failed Loki or Pushgateway push also exits 2, after the reports are written. `docs/grafana/` holds an example dashboard and Prometheus alert rules.
 
+**Report dashboards.** [`deploy/helm/ctaudit/dashboards/`](deploy/helm/ctaudit/dashboards) holds two Grafana dashboards that rebuild the HTML reports from the Loki lines alone, with no Prometheus needed:
+
+- `ctaudit-elb-report.json` (uid `ctaudit-elb-report`) shows the traffic totals, 4xx and 5xx counts, and average and maximum latency. It has every request table from the HTML report (load balancer, ELB and target status, client IPs, hosts, normalized paths, user agents, targets, method, listener type, action, TLS protocol and cipher, error reasons) and the TLS connection tables, including failed 443 handshakes by client IP. It ends with the matching requests and connections as rows.
+- `ctaudit-cloudtrail-report.json` (uid `ctaudit-cloudtrail-report`) shows the event, write, and error totals and the findings by severity, rule, actor, and account. It has the principal, event name, service, error code, source IP, account, and region tables, and the matching findings and events as rows.
+
+Both take a `loki` data source variable and filter on job, load balancer or account and region, and regular expressions for client IP and ELB status, or principal and event name. `Top N` sets the table length. The counts use the same rules as the HTML report: the principal is the ARN, else `invokedBy`, else `userName`, else `principalId`; numeric path segments become `{n}`; a write event is `readOnly=false`, or a missing `readOnly` and an event name that is not a read verb. Two limits apply. Loki stores each line at the time ctaudit shipped it, so the time picker selects scan runs, not request or event times, and the over-time charts show when lines were shipped. Tables that group by a high-cardinality field, such as client IP on a busy load balancer, can reach Loki's `max_query_series` limit (500 by default); lower `Top N` does not help there, so narrow the filters or the time range. Import the files in Grafana, or set `grafanaDashboards.enabled: true` in the chart to ship them as a ConfigMap for the Grafana dashboard sidecar.
+
 ## Debug logging
 
 `--debug`, or `CTAUDIT_DEBUG=1` in the environment, makes `cloudtrail`, `elb`, and `serve` log what they do to stderr. The reports on stdout and in files are unchanged. `--log-format json` writes one JSON object per line for log collectors; the default is `text` (`key=value`).
@@ -352,7 +359,7 @@ Set `debug: true` to pass `--debug` to every scanner, and `logFormat: json` to p
 
 [`deploy/terraform/example`](deploy/terraform/example) is an example Terraform root module that creates the IRSA role and reader policies and installs the chart with the role ARN passed in.
 
-The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
+The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `grafanaDashboards.enabled: true` adds a ConfigMap labeled `grafana_dashboard: "1"` that carries the two report dashboards; set `grafanaDashboards.namespace` when the Grafana sidecar watches a different namespace, and `grafanaDashboards.annotations` for a folder, for example `grafana_folder: Security`. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
 
 ## Exit codes
 

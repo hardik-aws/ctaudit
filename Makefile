@@ -31,7 +31,7 @@ image:
 
 # helm-lint lints the chart and checks that the CI values render the
 # expected objects. It skips when helm is not installed.
-HELM_KINDS := Deployment=2 PrometheusRule=1 Secret=1 Service=2 ServiceAccount=1 ServiceMonitor=1
+HELM_KINDS := ConfigMap=1 Deployment=2 PrometheusRule=1 Secret=1 Service=2 ServiceAccount=1 ServiceMonitor=1
 helm-lint:
 	@if ! command -v helm >/dev/null 2>&1; then echo "helm not installed; skipping helm-lint"; exit 0; fi; \
 	set -e; \
