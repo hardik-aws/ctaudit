@@ -144,6 +144,35 @@
       },
       {
         "type": "custom",
+        "name": "fail_status",
+        "label": "Failing status",
+        "description": "Which ELB statuses the Failing requests section counts.",
+        "query": "4xx and 5xx : [45]..,5xx only : 5..,4xx only : 4..",
+        "current": {
+          "text": "4xx and 5xx",
+          "value": "[45].."
+        },
+        "hide": 0,
+        "options": [
+          {
+            "text": "4xx and 5xx",
+            "value": "[45]..",
+            "selected": true
+          },
+          {
+            "text": "5xx only",
+            "value": "5..",
+            "selected": false
+          },
+          {
+            "text": "4xx only",
+            "value": "4..",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "type": "custom",
         "name": "top",
         "label": "Top N",
         "query": "10,20,50",
@@ -765,12 +794,1068 @@
     },
     {
       "type": "row",
-      "title": "Requests",
+      "title": "Failing requests",
       "collapsed": false,
       "id": 12,
       "gridPos": {
         "x": 0,
         "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Failing requests",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Requests whose ELB status matches the Failing status variable.",
+      "id": 13,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 4,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Failing share",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" [$__range])) / sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 14,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 14,
+        "w": 4,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "With error reason",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json error_reason=\"error_reason\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | error_reason!=\"\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Failing requests that carry an ALB error_reason.",
+      "id": 15,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 4,
+        "h": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Failing requests by ELB status",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (elb_status) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | keep elb_status [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{elb_status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
+      "id": 16,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by ELB status",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (elb_status) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | elb_status!=\"\" | keep elb_status [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{elb_status}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "ELB status",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 17,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by path",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (path) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | path!=\"\" | keep path [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Path (numbers as {n})",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 18,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by client IP",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (client_ip) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | client_ip!=\"\" | keep client_ip [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{client_ip}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Client IP",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 19,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by target",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (target) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target=\"target\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | target!=\"\" | keep target [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{target}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Target",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 20,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by error reason",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (error_reason) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json error_reason=\"error_reason\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | error_reason!=\"\" | keep error_reason [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{error_reason}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Error reason",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 21,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing by load balancer",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (lb) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\" | keep lb [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{lb}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Load balancer",
+              "Last *": "Requests"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "id": 22,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Failing requests (newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"$fail_status\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "lb",
+                "client_ip",
+                "method",
+                "host",
+                "path",
+                "elb_status",
+                "target_status",
+                "error_reason",
+                "target",
+                "latency",
+                "actions",
+                "redirect_url",
+                "classification",
+                "user_agent",
+                "trace_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "lb": 1,
+              "client_ip": 2,
+              "method": 3,
+              "host": 4,
+              "path": 5,
+              "elb_status": 6,
+              "target_status": 7,
+              "error_reason": 8,
+              "target": 9,
+              "latency": 10,
+              "actions": 11,
+              "redirect_url": 12,
+              "classification": 13,
+              "user_agent": 14,
+              "trace_id": 15
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "lb": "Load balancer",
+              "client_ip": "Client IP",
+              "method": "Method",
+              "host": "Host",
+              "path": "Path",
+              "elb_status": "ELB",
+              "target_status": "Target",
+              "error_reason": "Error reason",
+              "target": "Target IP",
+              "latency": "Latency (s)",
+              "actions": "Action",
+              "redirect_url": "Redirect",
+              "classification": "Classification",
+              "user_agent": "User agent",
+              "trace_id": "Trace ID"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
+      "id": 23,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 12
+      }
+    },
+    {
+      "type": "row",
+      "title": "Requests",
+      "collapsed": false,
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 48,
         "w": 24,
         "h": 1
       },
@@ -876,14 +1961,14 @@
           "fields": ""
         }
       },
-      "id": 13,
+      "id": 25,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 49,
         "w": 8,
         "h": 8
       }
@@ -988,14 +2073,14 @@
           "fields": ""
         }
       },
-      "id": 14,
+      "id": 26,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 14,
+        "y": 49,
         "w": 8,
         "h": 8
       }
@@ -1100,14 +2185,14 @@
           "fields": ""
         }
       },
-      "id": 15,
+      "id": 27,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 14,
+        "y": 49,
         "w": 8,
         "h": 8
       }
@@ -1212,14 +2297,14 @@
           "fields": ""
         }
       },
-      "id": 16,
+      "id": 28,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 57,
         "w": 8,
         "h": 8
       }
@@ -1324,14 +2409,14 @@
           "fields": ""
         }
       },
-      "id": 17,
+      "id": 29,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 22,
+        "y": 57,
         "w": 8,
         "h": 8
       }
@@ -1436,14 +2521,14 @@
           "fields": ""
         }
       },
-      "id": 18,
+      "id": 30,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 22,
+        "y": 57,
         "w": 8,
         "h": 8
       }
@@ -1548,14 +2633,14 @@
           "fields": ""
         }
       },
-      "id": 19,
+      "id": 31,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 65,
         "w": 8,
         "h": 8
       }
@@ -1660,14 +2745,14 @@
           "fields": ""
         }
       },
-      "id": 20,
+      "id": 32,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 30,
+        "y": 65,
         "w": 8,
         "h": 8
       }
@@ -1772,14 +2857,14 @@
           "fields": ""
         }
       },
-      "id": 21,
+      "id": 33,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 30,
+        "y": 65,
         "w": 8,
         "h": 8
       }
@@ -1884,14 +2969,14 @@
           "fields": ""
         }
       },
-      "id": 22,
+      "id": 34,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -1996,14 +3081,14 @@
           "fields": ""
         }
       },
-      "id": 23,
+      "id": 35,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 38,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -2108,14 +3193,14 @@
           "fields": ""
         }
       },
-      "id": 24,
+      "id": 36,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 38,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -2220,14 +3305,14 @@
           "fields": ""
         }
       },
-      "id": 25,
+      "id": 37,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2332,14 +3417,14 @@
           "fields": ""
         }
       },
-      "id": 26,
+      "id": 38,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 46,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2444,14 +3529,14 @@
           "fields": ""
         }
       },
-      "id": 27,
+      "id": 39,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 46,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2460,10 +3545,10 @@
       "type": "row",
       "title": "TLS connections",
       "collapsed": false,
-      "id": 28,
+      "id": 40,
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 89,
         "w": 24,
         "h": 1
       },
@@ -2514,14 +3599,14 @@
           "values": false
         }
       },
-      "id": 29,
+      "id": 41,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2572,14 +3657,14 @@
         }
       },
       "description": "Connections that negotiated a TLS protocol.",
-      "id": 30,
+      "id": 42,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 4,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2634,14 +3719,14 @@
         }
       },
       "description": "Connections on listener 443 with no TLS protocol.",
-      "id": 31,
+      "id": 43,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2692,14 +3777,14 @@
           "values": false
         }
       },
-      "id": 32,
+      "id": 44,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 12,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2750,14 +3835,14 @@
           "values": false
         }
       },
-      "id": 33,
+      "id": 45,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2807,14 +3892,14 @@
           "values": false
         }
       },
-      "id": 34,
+      "id": 46,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 20,
-        "y": 55,
+        "y": 90,
         "w": 4,
         "h": 4
       }
@@ -2919,14 +4004,14 @@
           "fields": ""
         }
       },
-      "id": 35,
+      "id": 47,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 94,
         "w": 8,
         "h": 8
       }
@@ -3031,14 +4116,14 @@
           "fields": ""
         }
       },
-      "id": 36,
+      "id": 48,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 59,
+        "y": 94,
         "w": 8,
         "h": 8
       }
@@ -3143,14 +4228,14 @@
           "fields": ""
         }
       },
-      "id": 37,
+      "id": 49,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 59,
+        "y": 94,
         "w": 8,
         "h": 8
       }
@@ -3255,14 +4340,14 @@
           "fields": ""
         }
       },
-      "id": 38,
+      "id": 50,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 102,
         "w": 8,
         "h": 8
       }
@@ -3367,14 +4452,14 @@
           "fields": ""
         }
       },
-      "id": 39,
+      "id": 51,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 67,
+        "y": 102,
         "w": 8,
         "h": 8
       }
@@ -3479,14 +4564,14 @@
           "fields": ""
         }
       },
-      "id": 40,
+      "id": 52,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 67,
+        "y": 102,
         "w": 8,
         "h": 8
       }
@@ -3591,14 +4676,14 @@
           "fields": ""
         }
       },
-      "id": 41,
+      "id": 53,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 75,
+        "y": 110,
         "w": 8,
         "h": 8
       }
@@ -3703,14 +4788,14 @@
           "fields": ""
         }
       },
-      "id": 42,
+      "id": 54,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 75,
+        "y": 110,
         "w": 8,
         "h": 8
       }
@@ -3815,14 +4900,14 @@
           "fields": ""
         }
       },
-      "id": 43,
+      "id": 55,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 75,
+        "y": 110,
         "w": 8,
         "h": 8
       }
@@ -3831,10 +4916,10 @@
       "type": "row",
       "title": "Matching requests",
       "collapsed": false,
-      "id": 44,
+      "id": 56,
       "gridPos": {
         "x": 0,
-        "y": 83,
+        "y": 118,
         "w": 24,
         "h": 1
       },
@@ -3950,14 +5035,14 @@
         "cellHeight": "sm"
       },
       "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 45,
+      "id": 57,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 119,
         "w": 24,
         "h": 12
       }
@@ -4063,14 +5148,14 @@
         "cellHeight": "sm"
       },
       "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 46,
+      "id": 58,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 96,
+        "y": 131,
         "w": 24,
         "h": 10
       }
