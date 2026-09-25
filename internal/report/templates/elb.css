@@ -306,3 +306,62 @@ details.errors li { overflow-wrap: anywhere; color: var(--muted); padding: 2px 0
   html { scroll-behavior: auto; }
   * { transition: none !important; }
 }
+
+/* Health, timeline, and share charts (inline SVG). */
+.gauges { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.gauge-tile { padding: 12px 14px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.gauge-title { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.gauge-tile svg.gauge { width: 100%; max-width: 160px; height: auto; }
+.gauge-value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: -6px; }
+.gauge-tile.ok .gauge-value { color: var(--ok); }
+.gauge-tile.warn .gauge-value { color: var(--warn); }
+.gauge-tile.crit .gauge-value { color: var(--crit); }
+.gauge-hint { font-size: 11.5px; color: var(--muted); }
+svg .track { fill: none; stroke: var(--sunk); stroke-width: 10; }
+svg.gauge .val { fill: none; stroke-width: 10; stroke-linecap: round; }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 14px; }
+.chart-panel .svgwrap { padding: 6px 10px 0; overflow-x: auto; }
+svg.svgc { display: block; width: 100%; min-width: 480px; height: auto; }
+svg.svgc .gl { stroke: var(--line); stroke-width: 1; }
+svg.svgc .ax { fill: var(--muted); font: 11px var(--sans); font-variant-numeric: tabular-nums; }
+svg.svgc .ln { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+svg.svgc .guide { stroke-width: 1; stroke-dasharray: 5 4; opacity: .85; }
+svg.svgc g:hover rect { opacity: .8; }
+.legend { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0 8px; }
+.legend th, .legend td { padding: 3px 12px; text-align: left; white-space: nowrap; }
+.legend th { color: var(--muted); font-weight: 500; }
+.legend .n { text-align: right; font-variant-numeric: tabular-nums; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.donuts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.donut-body { display: flex; gap: 14px; align-items: center; padding: 10px 14px 14px; }
+svg.donut { width: 104px; height: 104px; flex: none; transform: rotate(0deg); }
+svg.donut .track { stroke-width: 6; }
+svg.donut .seg { fill: none; stroke-width: 6; }
+.donut-legend { list-style: none; margin: 0; padding: 0; font-size: 12px; display: grid; gap: 4px; min-width: 0; flex: 1; }
+.donut-legend li { display: grid; grid-template-columns: auto 1fr auto auto; gap: 6px; align-items: center; }
+.donut-legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.donut-legend small { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+.timing td.meter-cell { min-width: 180px; }
+.timing .tm { display: inline-block; width: 110px; height: 6px; background: var(--sunk); border-radius: 3px; vertical-align: middle; margin-right: 8px; }
+.timing .tm i { display: block; height: 6px; border-radius: 3px; min-width: 2px; }
+.timing .tm.ok i { background: var(--ok); }
+.timing .tm.warn i { background: var(--warn); }
+.timing .tm.crit i { background: var(--crit); }
+.timing b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 14px; align-items: start; }
+.fail.crit { border-top: 3px solid var(--crit); }
+.fail.warn { border-top: 3px solid var(--warn); }
+.scroll.short { max-height: 420px; }
+.s-ok { fill: var(--ok); } .l-ok { stroke: var(--ok); } .sw.s-ok { background: var(--ok); } .t-ok { fill: var(--ok); }
+.s-info { fill: var(--info); } .l-info { stroke: var(--info); } .sw.s-info { background: var(--info); }
+.s-warn { fill: var(--warn); } .l-warn { stroke: var(--warn); } .sw.s-warn { background: var(--warn); } svg .t-warn { fill: var(--warn); }
+.s-crit { fill: var(--crit); } .l-crit { stroke: var(--crit); } .sw.s-crit { background: var(--crit); } svg .t-crit { fill: var(--crit); }
+.s-accent { fill: var(--accent); } .l-accent { stroke: var(--accent); } .sw.s-accent { background: var(--accent); }
+.s-muted { fill: var(--line-strong); } .l-muted { stroke: var(--line-strong); } .sw.s-muted { background: var(--line-strong); }
+.s-p1 { fill: var(--accent); } .l-p1 { stroke: var(--accent); } .sw.s-p1 { background: var(--accent); }
+.s-p2 { fill: var(--info); } .l-p2 { stroke: var(--info); } .sw.s-p2 { background: var(--info); }
+.s-p3 { fill: var(--ok); } .l-p3 { stroke: var(--ok); } .sw.s-p3 { background: var(--ok); }
+.s-p4 { fill: var(--warn); } .l-p4 { stroke: var(--warn); } .sw.s-p4 { background: var(--warn); }
+.s-p5 { fill: var(--crit); } .l-p5 { stroke: var(--crit); } .sw.s-p5 { background: var(--crit); }
+.s-p6 { fill: var(--muted); } .l-p6 { stroke: var(--muted); } .sw.s-p6 { background: var(--muted); }

@@ -23,11 +23,13 @@ func sampleELBResult() (engine.ELBResult, Meta) {
 			Host: "tiles.example.com", Path: "/v1/12/6346.pbf",
 			UserAgent: "<script>alert(1)</script>", SSLCipher: "ECDHE-RSA-AES128-GCM-SHA256",
 			SSLProtocol: "TLSv1.2", Actions: "forward",
+			TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/tiles/0a1b",
 		},
 		{
 			Kind: elblog.ALB, Type: "https", Time: ts.Add(time.Hour), LB: "app/tiles/abc",
 			ClientIP: "198.51.100.7", Latency: -1, RequestTime: -1, TargetTime: -1, ResponseTime: -1,
 			ELBStatus: "502", Method: "GET", Path: "/v1/health", ErrorReason: "TargetConnectionError",
+			Target: "10.0.1.6:8080", TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/tiles/0a1b",
 		},
 	}
 	sum := stats.NewELBSummary()

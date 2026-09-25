@@ -35,6 +35,15 @@ var elbTemplate = template.Must(template.New("elb").Funcs(baseFuncs()).Funcs(tem
 	"elbjs":   func() template.JS { return template.JS(elbScript) },
 	"tone":    tone,
 	"secs":    sortSeconds,
+	"gauge":   gaugeSVG,
+	"pctf":    func(v float64) string { return fmt.Sprintf("%.1f%%", v) },
+	"dict": func(kv ...any) map[string]any {
+		m := make(map[string]any, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			m[kv[i].(string)] = kv[i+1]
+		}
+		return m
+	},
 }).Parse(elbTemplateText))
 
 // tone classifies a table value for colour coding: "crit", "warn", "ok",
@@ -173,6 +182,30 @@ func ELBTerminal(w io.Writer, res engine.ELBResult, meta Meta, topN int) error {
 	p("  First request\t%s\n", formatTime(sum.First))
 	p("  Last request\t%s\n", formatTime(sum.Last))
 
+	if sum.Total > 0 {
+		p("\nHEALTH\n")
+		for _, g := range healthGauges(sum) {
+			p("  %s\t%s\t%s\t%s\n", g.Title, g.Value, strings.ToUpper(g.Tone), g.Hint)
+		}
+	}
+
+	if groups := groupRows(sum, topN); len(groups) > 0 {
+		p("\nTARGET GROUPS\n")
+		p("  TARGET GROUP\tREQUESTS\t2XX\t4XX\t5XX\tELB 5XX\tCONN ERRORS\tTARGETS\tTARGET TIME AVG\tMAX\n")
+		for _, g := range groups {
+			p("  %s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n", clean(g.Name), g.Requests, g.T2xx, g.T4xx, g.T5xx,
+				g.ELB5xx, g.ConnErrors, g.Targets, formatLatency(g.Avg), formatLatency(g.Max))
+		}
+	}
+
+	if paths := pathRows(sum, topN); len(paths) > 0 {
+		p("\nSLOWEST PATHS\n")
+		p("  PATH\tREQUESTS\tMIN\tAVG\tMAX\n")
+		for _, r := range paths {
+			p("  %s\t%d\t%s\t%s\t%s\n", clean(r.Path), r.Count, formatLatency(r.Min), formatLatency(r.Avg), formatLatency(r.Max))
+		}
+	}
+
 	for _, t := range elbRankedTables(sum) {
 		pairs := t.counter.TopN(topN)
 		if len(pairs) == 0 {
@@ -283,6 +316,15 @@ type elbHTMLView struct {
 	HourPeak        bar
 	WeakTLSRequests int
 	WeakTLSConns    int
+
+	// Health and timeline sections.
+	Gauges              []gauge
+	Charts              []chartView
+	Donuts              []donut
+	Groups              []groupRow
+	Paths               []pathRow
+	ErrReqs, WarnReqs   []elblog.Entry
+	ErrTotal, WarnTotal int
 }
 
 // ELBHTML writes the self-contained load balancer report.
@@ -331,6 +373,23 @@ func ELBHTML(w io.Writer, res engine.ELBResult, meta Meta, topN int) error {
 		}
 		v.Tables = append(v.Tables, htmlTable{Title: t.htmlTitle, KeyHeader: t.htmlKey, Rows: bars(pairs)})
 	}
+	if sum.Total > 0 {
+		v.Gauges = healthGauges(sum)
+		v.Charts = chartViews(elbCharts(sum))
+		for _, d := range []donut{
+			counterDonut("ELB status", statusClassCounter(sum.ByStatus), classTone),
+			counterDonut("Load balancer", sum.ByLB, nil),
+			counterDonut("Method", sum.ByMethod, nil),
+			counterDonut("Listener type", sum.ByType, nil),
+		} {
+			if len(d.Slices) > 0 {
+				v.Donuts = append(v.Donuts, d)
+			}
+		}
+		v.Groups = groupRows(sum, topN)
+		v.Paths = pathRows(sum, topN)
+	}
+	v.ErrReqs, v.WarnReqs, v.ErrTotal, v.WarnTotal = failing(res.Matches)
 	return elbTemplate.Execute(w, v)
 }
 

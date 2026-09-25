@@ -12,9 +12,14 @@
 <div class="brand">ELB Access Logs<small>{{.Since}} .. {{.Until}}</small></div>
 <nav aria-label="Sections">
 <a href="#overview">Overview</a>
+{{if .Gauges}}<a href="#health">Health</a>{{end}}
+{{if .Charts}}<a href="#timeline">Timeline</a>{{end}}
+{{if .Groups}}<a href="#groups">Target groups</a>{{end}}
+{{if .Paths}}<a href="#timing">Timing</a>{{end}}
 <a href="#hourly">Hourly</a>
 {{if .Tables}}<a href="#breakdown">Breakdown</a>{{end}}
 {{if .Conns.Total}}<a href="#tls">TLS</a>{{end}}
+{{if or .ErrReqs .WarnReqs}}<a href="#failing">Failing</a>{{end}}
 <a href="#requests">Requests</a>
 {{if .ConnMatches}}<a href="#connections">Connections</a>{{end}}
 {{if .Res.Errors}}<a href="#errors">Errors</a>{{end}}
@@ -51,6 +56,65 @@
 </div>
 </section>
 
+{{if .Gauges}}<section id="health" aria-labelledby="health-h">
+<h2 id="health-h">Health <span class="sub">from access logs · no health-check data</span></h2>
+<div class="gauges">
+{{range .Gauges}}<div class="panel gauge-tile {{.Tone}}">
+<div class="gauge-title">{{.Title}}</div>
+{{gauge .}}
+<div class="gauge-value">{{.Value}}</div>
+<div class="gauge-hint">{{.Hint}}</div>
+</div>
+{{end}}</div>
+</section>{{end}}
+
+{{if .Charts}}<section id="timeline" aria-labelledby="timeline-h">
+<h2 id="timeline-h">Timeline (UTC) <span class="sub">{{(index .Charts 0).Step}} · hover a bar for its values</span></h2>
+<div class="charts">
+{{range .Charts}}<div class="panel chart-panel">
+<div class="panel-head"><h3>{{.Title}}</h3></div>
+<div class="svgwrap">{{.SVG}}</div>
+<table class="legend">
+<thead><tr><th scope="col">Series</th><th scope="col" class="n">Min</th><th scope="col" class="n">Max</th><th scope="col" class="n">Avg</th><th scope="col" class="n">Last</th></tr></thead>
+<tbody>
+{{range .Legend}}<tr><td><i class="sw s-{{.Tone}}"></i>{{.Name}}</td><td class="n">{{.Min}}</td><td class="n">{{.Max}}</td><td class="n">{{.Avg}}</td><td class="n">{{.Last}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{end}}</div>
+</section>{{end}}
+
+{{if .Donuts}}<section id="shares" aria-label="Shares">
+<div class="donuts">
+{{range .Donuts}}<div class="panel donut-panel">
+<div class="panel-head"><h3>{{.Title}}</h3></div>
+<div class="donut-body">{{.SVG}}
+<ul class="donut-legend">{{range .Slices}}<li><i class="sw s-{{.Tone}}"></i><span class="mono" title="{{.Key}}">{{.Key}}</span><b>{{num .Count}}</b><small>{{pctf .Pct}}</small></li>{{end}}</ul>
+</div>
+</div>
+{{end}}</div>
+</section>{{end}}
+
+{{if .Groups}}<section id="groups" aria-labelledby="groups-h">
+<h2 id="groups-h">Target groups <span class="sub">busiest first · target status counts</span></h2>
+<div class="panel"><div class="scroll"><table class="data">
+<thead><tr><th>Target group</th><th class="n">Requests</th><th class="n">2xx</th><th class="n">4xx</th><th class="n">5xx</th><th class="n">ELB 5xx</th><th class="n">Conn errors</th><th class="n">Targets</th><th class="n">Target time avg</th><th class="n">Target time max</th></tr></thead>
+<tbody>
+{{range .Groups}}<tr title="{{.ARN}}"><td class="mono"><span class="pill {{.Tone}}">{{.Name}}</span></td><td class="n">{{num .Requests}}</td><td class="n">{{num .T2xx}}</td><td class="n">{{num .T4xx}}</td><td class="n">{{num .T5xx}}</td><td class="n">{{num .ELB5xx}}</td><td class="n">{{num .ConnErrors}}</td><td class="n">{{num .Targets}}</td><td class="n" data-sort="{{secs .Avg}}">{{latency .Avg}}</td><td class="n" data-sort="{{secs .Max}}">{{latency .Max}}</td></tr>
+{{end}}</tbody>
+</table></div></div>
+</section>{{end}}
+
+{{if .Paths}}<section id="timing" aria-labelledby="timing-h">
+<h2 id="timing-h">Slowest paths <span class="sub">total latency by path (numbers as {n}) · warn {{latency 0.5}} · crit {{latency 1.0}}</span></h2>
+<div class="panel"><div class="scroll"><table class="data timing">
+<thead><tr><th>Path</th><th class="n">Requests</th><th class="n">Min</th><th>Avg</th><th>Max</th></tr></thead>
+<tbody>
+{{range .Paths}}<tr><td class="mono wrap">{{.Path}}</td><td class="n">{{num .Count}}</td><td class="n" data-sort="{{secs .Min}}">{{latency .Min}}</td><td class="meter-cell" data-sort="{{secs .Avg}}"><span class="tm {{.AvgTone}}"><i style="width:{{.AvgPct}}%"></i></span><b>{{latency .Avg}}</b></td><td class="meter-cell" data-sort="{{secs .Max}}"><span class="tm {{.MaxTone}}"><i style="width:{{.MaxPct}}%"></i></span><b>{{latency .Max}}</b></td></tr>
+{{end}}</tbody>
+</table></div></div>
+</section>{{end}}
+
 <section id="hourly" aria-labelledby="hourly-h">
 <h2 id="hourly-h">Requests by hour (UTC){{if .HourPeak.Count}} <span class="sub">peak {{.HourPeak.Key}}:00 · {{num .HourPeak.Count}} requests</span>{{end}}</h2>
 <div class="panel chart">
@@ -82,6 +146,14 @@
 <div class="grid" style="margin-top:14px">
 {{range .ConnTables}}{{template "rank" .}}
 {{end}}</div>
+</section>{{end}}
+
+{{if or .ErrReqs .WarnReqs}}<section id="failing" aria-labelledby="failing-h">
+<h2 id="failing-h">Failing requests <span class="sub">from the {{len .Matches}} kept matches</span></h2>
+<div class="grid2">
+{{template "fail" (dict "Title" "Errors (5xx)" "Tone" "crit" "Rows" .ErrReqs "Total" .ErrTotal)}}
+{{template "fail" (dict "Title" "Warnings (4xx)" "Tone" "warn" "Rows" .WarnReqs "Total" .WarnTotal)}}
+</div>
 </section>{{end}}
 
 <section id="requests" aria-labelledby="requests-h">
@@ -141,4 +213,13 @@
 {{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{template "val" .Key}}</td><td class="cnt">{{num .Count}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
 {{end}}</tbody>
 </table>
+</div>{{end}}
+{{define "fail"}}<div class="panel fail {{.Tone}}">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} of {{num .Total}}</span></div>
+{{if .Rows}}<div class="scroll short"><table class="data">
+<thead><tr><th>Time</th><th>Client</th><th>Status</th><th>Target</th><th>Method</th><th>Path</th><th>Error reason</th><th class="n">Latency</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><td class="t">{{ts .Time}}</td><td class="mono">{{.ClientIP}}</td><td>{{template "val" .ELBStatus}}</td><td>{{template "val" .TargetStatus}}</td><td>{{dash .Method}}</td><td class="mono wrap">{{dash .Path}}</td><td>{{dash .ErrorReason}}</td><td class="n" data-sort="{{secs .Latency}}">{{latency .Latency}}</td></tr>
+{{end}}</tbody>
+</table></div>{{else}}<p class="empty">None in the kept matches.</p>{{end}}
 </div>{{end}}

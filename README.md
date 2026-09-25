@@ -114,9 +114,14 @@ The report contains:
 
 - Traffic totals: requests, bytes received and sent, and latency percentiles
 - Ranked tables: load balancers, ELB and target status codes, client IPs, hosts, normalized paths, user agents, targets, methods, request types, actions, TLS protocols and ciphers, and error reasons
+- Health: average target response time (warn 500 ms, crit 1 s), 5xx rate (warn 1%, crit 5%), target connection errors (a `TargetConnection*` error reason, or a 502 with a target and no target status), and how many of the targets seen returned a 5xx. Access logs carry no health-check results, so this is not the healthy host count CloudWatch shows
+- Timeline charts over the scanned window, in 1 minute to 1 day buckets (at most 288): requests with the average target response time, responses by ELB status class, target responses with connection errors, and average and maximum latency against the 500 ms and 1 s guides. Each chart has a min, max, average, and last value legend
+- Target groups: requests, target 2xx, 4xx, and 5xx, ELB 5xx, connection errors, distinct targets, and average and maximum target response time
+- Slowest paths: normalized paths ordered by average latency, with minimum and maximum
 - Requests by hour (UTC)
 - TLS connections, from ALB connection logs (`conn_log_*` objects): total and TLS connections, failed TLS handshakes on port 443, handshake time, and ranked tables by load balancer, listener and TLS protocol, protocol, cipher, key exchange, client certificate verify status, client IP, and failed-handshake client IP
 - In the HTML report, a requests table with every log field and a connections table with every connection log field, each capped at `--max-events`
+- In the HTML report, share rings for ELB status class, load balancer, method, and listener type, and the error (5xx) and warning (4xx) requests from the kept matches, up to 200 each
 
 Connection records are counted separately from requests, so they never change request totals. Only `--client-ip` and the time window apply to them; any other request filter excludes every connection.
 
@@ -164,7 +169,7 @@ Load balancers write one object per five-minute interval and file it under the d
 
 ## PDF report
 
-Both subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the hourly chart, the ranked tables, and, for CloudTrail, every finding the report kept. It leaves out the matching requests, connections, and events tables; use the HTML report for those. A PDF write failure exits 2.
+Both subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the ELB health values, timeline charts, target group and slowest path tables, the hourly chart, the ranked tables, and, for CloudTrail, every finding the report kept. It leaves out the matching requests, connections, and events tables; use the HTML report for those. A PDF write failure exits 2.
 
 ## Prometheus and Loki
 

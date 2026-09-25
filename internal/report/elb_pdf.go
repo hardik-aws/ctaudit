@@ -2,6 +2,8 @@ package report
 
 import (
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/gsmappdev/ctaudit/internal/engine"
 	"github.com/gsmappdev/ctaudit/internal/stats"
@@ -55,6 +57,21 @@ func renderELBPDF(res engine.ELBResult, meta Meta, topN int) (*pdfDoc, error) {
 	}
 
 	if sum.Total > 0 {
+		d.heading("Health")
+		var health [][2]string
+		for _, g := range healthGauges(sum) {
+			health = append(health, [2]string{g.Title, g.Value + "  " + strings.ToUpper(g.Tone) + "  " + g.Hint})
+		}
+		d.kv(health)
+		for _, c := range elbCharts(sum) {
+			d.chart(c)
+		}
+		if groups := groupRows(sum, topN); len(groups) > 0 {
+			d.table(groupPDFTable(groups))
+		}
+		if paths := pathRows(sum, topN); len(paths) > 0 {
+			d.table(pathPDFTable(paths))
+		}
 		d.hours(hourBars(sum.ByHour), "Requests by hour (UTC)")
 		for _, t := range elbRankedTables(sum) {
 			if pairs := t.counter.TopN(topN); len(pairs) > 0 {
@@ -83,4 +100,39 @@ func renderELBPDF(res engine.ELBResult, meta Meta, topN int) (*pdfDoc, error) {
 
 	d.errorList(res.Errors)
 	return d, d.err
+}
+
+func groupPDFTable(rows []groupRow) pdfTable {
+	t := pdfTable{Title: "Target groups", Columns: []pdfColumn{
+		{Header: "Target group", Width: 0.21},
+		{Header: "Requests", Width: 0.11, Right: true},
+		{Header: "2xx", Width: 0.07, Right: true},
+		{Header: "4xx", Width: 0.07, Right: true},
+		{Header: "5xx", Width: 0.07, Right: true},
+		{Header: "ELB 5xx", Width: 0.10, Right: true},
+		{Header: "Conn err", Width: 0.10, Right: true},
+		{Header: "Targets", Width: 0.08, Right: true},
+		{Header: "Avg", Width: 0.09, Right: true},
+		{Header: "Max", Width: 0.09, Right: true},
+	}}
+	for _, g := range rows {
+		t.Rows = append(t.Rows, []string{g.Name, groupDigits(g.Requests), groupDigits(g.T2xx), groupDigits(g.T4xx),
+			groupDigits(g.T5xx), groupDigits(g.ELB5xx), groupDigits(g.ConnErrors), strconv.Itoa(g.Targets),
+			formatLatency(g.Avg), formatLatency(g.Max)})
+	}
+	return t
+}
+
+func pathPDFTable(rows []pathRow) pdfTable {
+	t := pdfTable{Title: "Slowest paths", Columns: []pdfColumn{
+		{Header: "Path", Width: 0.52},
+		{Header: "Requests", Width: 0.12, Right: true},
+		{Header: "Min", Width: 0.12, Right: true},
+		{Header: "Avg", Width: 0.12, Right: true},
+		{Header: "Max", Width: 0.12, Right: true},
+	}}
+	for _, r := range rows {
+		t.Rows = append(t.Rows, []string{r.Path, groupDigits(r.Count), formatLatency(r.Min), formatLatency(r.Avg), formatLatency(r.Max)})
+	}
+	return t
 }

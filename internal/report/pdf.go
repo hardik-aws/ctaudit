@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/signintech/gopdf"
@@ -397,4 +398,155 @@ func rankedPDFTable(title, keyHeader, countHeader string, pairs []stats.Pair, to
 		t.Rows = append(t.Rows, []string{p.Key, groupDigits(p.Count), pct})
 	}
 	return t
+}
+
+// pdfTones maps the chart tones to print colours.
+var pdfTones = map[string][3]uint8{
+	"ok":     {0x2f, 0x8a, 0x57},
+	"info":   {0x3b, 0x62, 0xb0},
+	"warn":   {0xa8, 0x69, 0x0f},
+	"crit":   {0xc0, 0x39, 0x2b},
+	"accent": colAccent,
+	"muted":  {0x9c, 0xa3, 0xaf},
+}
+
+func pdfTone(t string) [3]uint8 {
+	if c, ok := pdfTones[t]; ok {
+		return c
+	}
+	return colMuted
+}
+
+// chart draws a time chart under a heading, followed by its legend table.
+// It mirrors chartSVG: stacked bars and lines on the left axis, lines on
+// the right axis, and dashed guide lines.
+func (d *pdfDoc) chart(c seriesChart) {
+	n := c.Len()
+	if n == 0 {
+		return
+	}
+	const axisW, labelH = 40.0, 10.0
+	// Keep the heading, the plot, and the first legend rows together.
+	d.need(pdfChartH + labelH + 6*pdfRowH + 30)
+	d.heading(c.Title)
+	hasRight := false
+	for _, l := range c.Lines {
+		hasRight = hasRight || l.Right
+	}
+	left := pdfMargin + axisW
+	plotW := pdfContentW - axisW
+	if hasRight {
+		plotW -= axisW
+	}
+	top := d.pdf.GetY() + 4
+	base := top + pdfChartH
+	slot := plotW / float64(n)
+
+	leftMax, rightMax := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		stack := 0.0
+		for _, b := range c.Bars {
+			stack += b.Values[i]
+		}
+		leftMax = max(leftMax, stack)
+	}
+	for _, l := range c.Lines {
+		for _, v := range l.Values {
+			if v != v { // NaN
+				continue
+			}
+			if l.Right {
+				rightMax = max(rightMax, v)
+			} else {
+				leftMax = max(leftMax, v)
+			}
+		}
+	}
+	for _, g := range c.Guides {
+		leftMax = max(leftMax, g.Value)
+	}
+	leftMax, rightMax = niceMax(leftMax), niceMax(rightMax)
+	yl := func(v float64) float64 { return base - v/leftMax*pdfChartH }
+	yr := func(v float64) float64 { return base - v/rightMax*pdfChartH }
+
+	d.pdf.SetLineType("solid")
+	for i := 0; i <= 4; i++ {
+		f := float64(i) / 4
+		y := base - f*pdfChartH
+		d.pdf.SetStrokeColor(colRule[0], colRule[1], colRule[2])
+		d.pdf.SetLineWidth(0.3)
+		d.pdf.Line(left, y, left+plotW, y)
+		d.font(false, 6, colMuted)
+		d.text(pdfMargin, y-labelH/2, axisW-4, labelH, axisLabel(f*leftMax, c.LeftSeconds), true)
+		if hasRight {
+			d.text(left+plotW+4, y-labelH/2, axisW-4, labelH, axisLabel(f*rightMax, c.RightSeconds), false)
+		}
+	}
+	ticks := min(6, n)
+	multiDay := c.Step*time.Duration(n) > 24*time.Hour || c.Start.YearDay() != c.Start.Add(c.Step*time.Duration(n)-1).YearDay()
+	for i := 0; i < ticks; i++ {
+		idx := i * n / ticks
+		x := left + float64(idx)*slot
+		d.text(x, base+1, 60, labelH, timeLabel(c.Start.Add(c.Step*time.Duration(idx)), c.Step, multiDay), false)
+	}
+
+	bw := max(slot*0.8, 0.4)
+	for i := 0; i < n; i++ {
+		stack := 0.0
+		for _, s := range c.Bars {
+			v := s.Values[i]
+			if v <= 0 {
+				continue
+			}
+			y0, y1 := yl(stack), yl(stack+v)
+			d.fill(left+float64(i)*slot+(slot-bw)/2, y1, bw, max(y0-y1, 0.3), pdfTone(s.Tone))
+			stack += v
+		}
+	}
+	for _, g := range c.Guides {
+		col := pdfTone(g.Tone)
+		d.pdf.SetStrokeColor(col[0], col[1], col[2])
+		d.pdf.SetLineWidth(0.5)
+		d.pdf.SetLineType("dashed")
+		d.pdf.Line(left, yl(g.Value), left+plotW, yl(g.Value))
+		d.pdf.SetLineType("solid")
+	}
+	for _, l := range c.Lines {
+		y := yl
+		if l.Right {
+			y = yr
+		}
+		col := pdfTone(l.Tone)
+		d.pdf.SetStrokeColor(col[0], col[1], col[2])
+		d.pdf.SetLineWidth(0.9)
+		prev := -1
+		for i, v := range l.Values {
+			if v != v {
+				prev = -1
+				continue
+			}
+			x := left + (float64(i)+0.5)*slot
+			if prev >= 0 {
+				px := left + (float64(prev)+0.5)*slot
+				d.pdf.Line(px, y(l.Values[prev]), x, y(v))
+			} else if i+1 >= len(l.Values) || l.Values[i+1] != l.Values[i+1] {
+				d.fill(x-0.8, y(v)-0.8, 1.6, 1.6, col)
+			}
+			prev = i
+		}
+	}
+	d.rule(base, colRule)
+	d.pdf.SetXY(pdfMargin, base+labelH+4)
+
+	t := pdfTable{Columns: []pdfColumn{
+		{Header: "Series", Width: 0.44},
+		{Header: "Min", Width: 0.14, Right: true},
+		{Header: "Max", Width: 0.14, Right: true},
+		{Header: "Avg", Width: 0.14, Right: true},
+		{Header: "Last", Width: 0.14, Right: true},
+	}}
+	for _, r := range c.Legend() {
+		t.Rows = append(t.Rows, []string{r.Name, r.Min, r.Max, r.Avg, r.Last})
+	}
+	d.table(t)
 }
