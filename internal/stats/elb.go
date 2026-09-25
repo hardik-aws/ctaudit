@@ -39,6 +39,15 @@ type ELBSummary struct {
 	ByErrorReason  Counter
 	ByAction       Counter
 	ByHour         Counter
+
+	// Health and timeline aggregates. TargetTime covers measurable target
+	// response times; Timeline is keyed by Unix minute.
+	TargetTime       LatStat
+	TargetConnErrors int
+	ByTarget5xx      Counter
+	Timeline         map[int64]*TimeBucket
+	ByTargetGroup    map[string]*GroupStats
+	PathTiming       map[string]*LatStat
 }
 
 // NewELBSummary returns an ELBSummary with all counters initialised.
@@ -59,6 +68,10 @@ func NewELBSummary() *ELBSummary {
 		ByErrorReason:  Counter{},
 		ByAction:       Counter{},
 		ByHour:         Counter{},
+		ByTarget5xx:    Counter{},
+		Timeline:       map[int64]*TimeBucket{},
+		ByTargetGroup:  map[string]*GroupStats{},
+		PathTiming:     map[string]*LatStat{},
 	}
 }
 
@@ -103,7 +116,8 @@ func (s *ELBSummary) Add(e elblog.Entry) {
 	s.ByStatus.add(e.ELBStatus)
 	s.ByTargetStatus.add(e.TargetStatus)
 	s.ByHost.add(e.HostOrSNI())
-	s.ByPath.add(NormalizePath(e.Path))
+	path := NormalizePath(e.Path)
+	s.ByPath.add(path)
 	s.ByClientIP.add(e.ClientIP)
 	s.ByUserAgent.add(e.UserAgent)
 	s.ByTarget.add(e.Target)
@@ -112,6 +126,7 @@ func (s *ELBSummary) Add(e elblog.Entry) {
 	s.BySSLCipher.add(e.SSLCipher)
 	s.ByErrorReason.add(e.ErrorReason)
 	s.ByAction.add(e.Actions)
+	s.addHealth(e, path)
 }
 
 // Merge folds another summary's totals into this one.
@@ -150,6 +165,7 @@ func (s *ELBSummary) Merge(other *ELBSummary) {
 	s.ByErrorReason.merge(other.ByErrorReason)
 	s.ByAction.merge(other.ByAction)
 	s.ByHour.merge(other.ByHour)
+	s.mergeHealth(other)
 }
 
 // NormalizePath replaces numeric path segments with "{n}" so that tile and

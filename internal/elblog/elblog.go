@@ -124,6 +124,20 @@ func (e Entry) HostOrSNI() string {
 	return e.DomainName
 }
 
+// TargetConnError reports a request the load balancer could not deliver to
+// its target, the log-side counterpart of CloudWatch's
+// TargetConnectionErrorCount: an ALB error reason starting with
+// "TargetConnection", or a 502 for a chosen target that sent no status.
+func (e Entry) TargetConnError() bool {
+	if e.Conn {
+		return false
+	}
+	if strings.HasPrefix(e.ErrorReason, "TargetConnection") {
+		return true
+	}
+	return e.ELBStatus == "502" && e.Target != "" && e.TargetStatus == ""
+}
+
 // HandshakeFailed reports a connection record on port 443 with no
 // negotiated TLS protocol, which means the client connected but the TLS
 // handshake never completed. It assumes 443 is an HTTPS listener, since
