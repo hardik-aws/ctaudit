@@ -293,6 +293,7 @@
           "values": false
         }
       },
+      "description": "CloudTrail events in the time range that match the job, account, region, principal, and event name filters. Follows the dashboard filters.",
       "id": 2,
       "datasource": {
         "type": "loki",
@@ -412,6 +413,7 @@
           "values": false
         }
       },
+      "description": "Matching events that returned an errorCode, such as AccessDenied. Follows the dashboard filters.",
       "id": 4,
       "datasource": {
         "type": "loki",
@@ -473,6 +475,7 @@
           "values": false
         }
       },
+      "description": "Findings with CRITICAL severity, such as root account use or CloudTrail being stopped. Follows the dashboard filters.",
       "id": 5,
       "datasource": {
         "type": "loki",
@@ -534,6 +537,7 @@
           "values": false
         }
       },
+      "description": "Findings with HIGH severity. Follows the dashboard filters.",
       "id": 6,
       "datasource": {
         "type": "loki",
@@ -595,6 +599,7 @@
           "values": false
         }
       },
+      "description": "Findings with MEDIUM severity. Follows the dashboard filters.",
       "id": 7,
       "datasource": {
         "type": "loki",
@@ -652,6 +657,7 @@
           "values": false
         }
       },
+      "description": "Findings with LOW severity. Follows the dashboard filters.",
       "id": 8,
       "datasource": {
         "type": "loki",
@@ -705,7 +711,7 @@
           "sort": "desc"
         }
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the eventTime column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the event time, so the time range selects events. Lines shipped with --loki-time scan are stored at the scan time; the real event time is the eventTime column.",
       "id": 9,
       "datasource": {
         "type": "loki",
@@ -759,7 +765,7 @@
           "sort": "desc"
         }
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the event_time column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the event time, so the time range selects events. Lines shipped with --loki-time scan are stored at the scan time; the real event time is the event_time column.",
       "id": 10,
       "datasource": {
         "type": "loki",
@@ -885,6 +891,7 @@
           "fields": ""
         }
       },
+      "description": "Findings counted by the ctaudit rule that raised them. Follows the dashboard filters.",
       "id": 12,
       "datasource": {
         "type": "loki",
@@ -997,6 +1004,7 @@
           "fields": ""
         }
       },
+      "description": "Principals behind the most findings. Follows the dashboard filters.",
       "id": 13,
       "datasource": {
         "type": "loki",
@@ -1109,6 +1117,7 @@
           "fields": ""
         }
       },
+      "description": "Findings per AWS account. Follows the dashboard filters.",
       "id": 14,
       "datasource": {
         "type": "loki",
@@ -1215,7 +1224,7 @@
         "showHeader": true,
         "cellHeight": "sm"
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the event_time column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the event time, so the time range selects events. Lines shipped with --loki-time scan are stored at the scan time; the real event time is the event_time column.",
       "id": 15,
       "datasource": {
         "type": "loki",
@@ -1341,6 +1350,7 @@
           "fields": ""
         }
       },
+      "description": "Principals with the most matching events: the ARN, else invokedBy, else userName, else principalId. Follows the dashboard filters.",
       "id": 17,
       "datasource": {
         "type": "loki",
@@ -1453,6 +1463,7 @@
           "fields": ""
         }
       },
+      "description": "Most frequent API calls (eventName). Follows the dashboard filters.",
       "id": 18,
       "datasource": {
         "type": "loki",
@@ -1565,6 +1576,7 @@
           "fields": ""
         }
       },
+      "description": "Most called AWS services (eventSource without .amazonaws.com). Follows the dashboard filters.",
       "id": 19,
       "datasource": {
         "type": "loki",
@@ -1677,6 +1689,7 @@
           "fields": ""
         }
       },
+      "description": "Most frequent errorCode values of matching events. Follows the dashboard filters.",
       "id": 20,
       "datasource": {
         "type": "loki",
@@ -1789,6 +1802,7 @@
           "fields": ""
         }
       },
+      "description": "Source IPs (or AWS service names) that made the most matching calls. Follows the dashboard filters.",
       "id": 21,
       "datasource": {
         "type": "loki",
@@ -1901,6 +1915,7 @@
           "fields": ""
         }
       },
+      "description": "User agents that made the most matching calls. Follows the dashboard filters.",
       "id": 22,
       "datasource": {
         "type": "loki",
@@ -2013,6 +2028,7 @@
           "fields": ""
         }
       },
+      "description": "Matching events per AWS account. Follows the dashboard filters.",
       "id": 23,
       "datasource": {
         "type": "loki",
@@ -2125,6 +2141,7 @@
           "fields": ""
         }
       },
+      "description": "Matching events per AWS region. Follows the dashboard filters.",
       "id": 24,
       "datasource": {
         "type": "loki",
@@ -2237,6 +2254,7 @@
           "fields": ""
         }
       },
+      "description": "Matching events by userIdentity.type, such as AssumedRole, IAMUser, Root, or AWSService. Follows the dashboard filters.",
       "id": 25,
       "datasource": {
         "type": "loki",
@@ -2359,7 +2377,7 @@
         "showHeader": true,
         "cellHeight": "sm"
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the event time. Pick a time range that covers the scan runs; the real event time is the eventTime column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the event time, so the time range selects events. Lines shipped with --loki-time scan are stored at the scan time; the real event time is the eventTime column.",
       "id": 27,
       "datasource": {
         "type": "loki",

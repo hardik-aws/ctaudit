@@ -260,6 +260,7 @@
           "values": false
         }
       },
+      "description": "Access log requests in the time range that match the job, load balancer, client IP, and status filters. Follows the dashboard filters.",
       "id": 2,
       "datasource": {
         "type": "loki",
@@ -317,6 +318,7 @@
           "values": false
         }
       },
+      "description": "Bytes the load balancer received from clients for the matching requests. Follows the dashboard filters.",
       "id": 3,
       "datasource": {
         "type": "loki",
@@ -374,6 +376,7 @@
           "values": false
         }
       },
+      "description": "Bytes the load balancer sent back to clients for the matching requests. Follows the dashboard filters.",
       "id": 4,
       "datasource": {
         "type": "loki",
@@ -615,6 +618,7 @@
           "values": false
         }
       },
+      "description": "Highest total latency (request_time + target_time + response_time) of a matching request. Follows the dashboard filters.",
       "id": 8,
       "datasource": {
         "type": "loki",
@@ -672,6 +676,7 @@
           "values": false
         }
       },
+      "description": "Distinct load balancers that served matching requests. Follows the dashboard filters.",
       "id": 9,
       "datasource": {
         "type": "loki",
@@ -725,7 +730,7 @@
           "sort": "desc"
         }
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
       "id": 10,
       "datasource": {
         "type": "loki",
@@ -779,7 +784,7 @@
           "sort": "desc"
         }
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
       "id": 11,
       "datasource": {
         "type": "loki",
@@ -794,12 +799,1688 @@
     },
     {
       "type": "row",
-      "title": "Failing requests",
+      "title": "Health",
       "collapsed": false,
       "id": 12,
       "gridPos": {
         "x": 0,
         "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "gauge",
+      "title": "Target response time (avg)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_time=\"target_time\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_time!=\"\" | keep target_time | unwrap target_time | __error__=\"\" [$__range]) by ()",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "max": 2,
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Mean target_time of requests a target answered. Warn 500 ms, critical 1 s.",
+      "id": 13,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 6,
+        "h": 6
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "5xx rate",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"5..\" [$__range])) / sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "max": 0.1,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Share of requests with an ELB 5xx. Warn 1%, critical 5%.",
+      "id": 14,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 14,
+        "w": 6,
+        "h": 6
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Target connection errors",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json error_reason=\"error_reason\", target=\"target\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | error_reason=~\"TargetConnection.*\" or (elb_status=\"502\" and target!=\"\" and target_status=\"\") [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "A TargetConnection* error reason, or a 502 with a target and no target status.",
+      "id": 15,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 6,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Targets returning 5xx",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "count(sum by (target) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target=\"target\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_status=~\"5..\" | target!=\"\" | keep target [$__range])))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Distinct targets that answered with a 5xx. Access logs carry no health checks, so this stands in for the unhealthy host count.",
+      "id": 16,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 14,
+        "w": 6,
+        "h": 6
+      }
+    },
+    {
+      "type": "row",
+      "title": "Timeline",
+      "collapsed": false,
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests and target response time",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "Requests"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "avg(avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_time=\"target_time\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_time!=\"\" | keep target_time | unwrap target_time | __error__=\"\" [$__interval])) by ()",
+          "queryType": "range",
+          "legendFormat": "Target response time (avg)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target response time (avg)"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 60
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 18,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Target responses",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tclass) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format tclass=`{{ if .target_status }}{{ substr 0 1 .target_status }}xx{{ else }}no target response{{ end }}` | keep tclass [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{tclass}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json error_reason=\"error_reason\", target=\"target\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | error_reason=~\"TargetConnection.*\" or (elb_status=\"502\" and target!=\"\" and target_status=\"\") [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "Target connection errors"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 19,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "avg(avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | latency!=\"\" | keep latency | unwrap latency | __error__=\"\" [$__interval])) by ()",
+          "queryType": "range",
+          "legendFormat": "Latency (avg)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "max(max_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | latency!=\"\" | keep latency | unwrap latency | __error__=\"\" [$__interval])) by ()",
+          "queryType": "range",
+          "legendFormat": "Latency (max)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "avg(avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_time=\"target_time\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_time!=\"\" | keep target_time | unwrap target_time | __error__=\"\" [$__interval])) by ()",
+          "queryType": "range",
+          "legendFormat": "Target response time (avg)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "auto",
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Dashed lines mark 500 ms and 1 s. Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 20,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Average latency of the slowest paths",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk(5, avg by (path) (avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | latency!=\"\" | keep path, latency | unwrap latency | __error__=\"\" [$__interval])))",
+          "queryType": "range",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "auto",
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Numeric path segments become {n}. Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 21,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "ELB status class",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (class) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format class=`{{ substr 0 1 .elb_status }}xx` | keep class [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Share of matching requests by ELB status class (2xx, 3xx, 4xx, 5xx). Follows the dashboard filters.",
+      "id": 22,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Load balancer",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (lb) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | keep lb [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{lb}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Share of matching requests served by each load balancer. Follows the dashboard filters.",
+      "id": 23,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 39,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Method",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk(6, sum by (method) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json method=\"method\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | method!=\"\" | keep method [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{method}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Share of matching requests by HTTP method; the six most used methods. Follows the dashboard filters.",
+      "id": 24,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 39,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Listener type",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (type) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json type=\"type\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | type!=\"\" | keep type [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Share of matching requests by listener type (http, https, h2, grpcs, ws, wss, tcp, tls). Follows the dashboard filters.",
+      "id": 25,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 39,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Target groups and timing",
+      "collapsed": false,
+      "id": 26,
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Target groups",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | keep tg [$__range])))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target_status=~\"2..\" | keep tg [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target_status=~\"4..\" | keep tg [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target_status=~\"5..\" | keep tg [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | elb_status=~\"5..\" | keep tg [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (tg) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", error_reason=\"error_reason\", target=\"target\", target_status=\"target_status\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | error_reason=~\"TargetConnection.*\" or (elb_status=\"502\" and target!=\"\" and target_status=\"\") | keep tg [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "count by (tg) (sum by (tg, target) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target=\"target\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target!=\"\" | keep tg, target [$__range])))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target_time=\"target_time\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target_time!=\"\" | keep tg, target_time | unwrap target_time | __error__=\"\" [$__range]) by (tg)",
+          "queryType": "instant"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "max_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json target_group_arn=\"target_group_arn\", target_time=\"target_time\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | target_group_arn!=\"\" | label_format tg=`{{ regexReplaceAll \".*:targetgroup/\" .target_group_arn \"\" }}` | target_time!=\"\" | keep tg, target_time | unwrap target_time | __error__=\"\" [$__range]) by (tg)",
+          "queryType": "instant"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "tg",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E",
+                "Value #F",
+                "Value #G",
+                "Value #H",
+                "Value #I"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "tg": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9
+            },
+            "renameByName": {
+              "tg": "Target group",
+              "Value #A": "Requests",
+              "Value #B": "Target 2xx",
+              "Value #C": "Target 4xx",
+              "Value #D": "Target 5xx",
+              "Value #E": "ELB 5xx",
+              "Value #F": "Conn errors",
+              "Value #G": "Targets",
+              "Value #H": "Target time avg",
+              "Value #I": "Target time max"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target 2xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target 4xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target 5xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ELB 5xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Conn errors"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Targets"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target time avg"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target time max"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Busiest target groups first. Target status counts come from target_status_code.",
+      "id": 27,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Slowest paths",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, avg_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | latency!=\"\" | keep path, latency | unwrap latency | __error__=\"\" [$__range]) by (path))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "min_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | latency!=\"\" | keep path, latency | unwrap latency | __error__=\"\" [$__range]) by (path)",
+          "queryType": "instant"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "max_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | latency!=\"\" | keep path, latency | unwrap latency | __error__=\"\" [$__range]) by (path)",
+          "queryType": "instant"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (path) (count_over_time({job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json path=\"path\", latency=\"latency\", client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | label_format path=`{{ regexReplaceAll \"/[0-9]+([./]|$)\" (regexReplaceAll \"/[0-9]+([./]|$)\" .path \"/{n}${1}\") \"/{n}${1}\" }}` | latency!=\"\" | keep path [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "path",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "path": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "path": "Path (numbers as {n})",
+              "Value #A": "Latency avg",
+              "Value #B": "Latency min",
+              "Value #C": "Latency max",
+              "Value #D": "Requests"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Latency avg",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latency avg"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latency min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latency max"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Paths ordered by average latency. Requests with an unknown latency are left out.",
+      "id": 28,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Errors and warnings",
+      "collapsed": false,
+      "id": 29,
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Errors (5xx, newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"5..\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "lb",
+                "client_ip",
+                "method",
+                "path",
+                "elb_status",
+                "target_status",
+                "error_reason",
+                "target",
+                "latency",
+                "trace_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "lb": 1,
+              "client_ip": 2,
+              "method": 3,
+              "path": 4,
+              "elb_status": 5,
+              "target_status": 6,
+              "error_reason": 7,
+              "target": 8,
+              "latency": 9,
+              "trace_id": 10
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "lb": "Load balancer",
+              "client_ip": "Client IP",
+              "method": "Method",
+              "path": "Path",
+              "elb_status": "ELB",
+              "target_status": "Target",
+              "error_reason": "Error reason",
+              "target": "Target IP",
+              "latency": "Latency (s)",
+              "trace_id": "Trace ID"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 30,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 65,
+        "w": 12,
+        "h": 10
+      }
+    },
+    {
+      "type": "table",
+      "title": "Warnings (4xx, newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"elb\", kind=\"request\", lb=~\"$lb\"} | json client_ip=\"client_ip\", elb_status=\"elb_status\" | __error__=\"\" | client_ip=~\"$client_ip\" | elb_status=~\"$status\" | elb_status=~\"4..\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "lb",
+                "client_ip",
+                "method",
+                "path",
+                "elb_status",
+                "target_status",
+                "error_reason",
+                "target",
+                "latency",
+                "trace_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "lb": 1,
+              "client_ip": 2,
+              "method": 3,
+              "path": 4,
+              "elb_status": 5,
+              "target_status": 6,
+              "error_reason": 7,
+              "target": 8,
+              "latency": 9,
+              "trace_id": 10
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "lb": "Load balancer",
+              "client_ip": "Client IP",
+              "method": "Method",
+              "path": "Path",
+              "elb_status": "ELB",
+              "target_status": "Target",
+              "error_reason": "Error reason",
+              "target": "Target IP",
+              "latency": "Latency (s)",
+              "trace_id": "Trace ID"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 31,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 65,
+        "w": 12,
+        "h": 10
+      }
+    },
+    {
+      "type": "row",
+      "title": "Failing requests",
+      "collapsed": false,
+      "id": 32,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
         "w": 24,
         "h": 1
       },
@@ -855,14 +2536,14 @@
         }
       },
       "description": "Requests whose ELB status matches the Failing status variable.",
-      "id": 13,
+      "id": 33,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 76,
         "w": 4,
         "h": 6
       }
@@ -921,14 +2602,15 @@
           "values": false
         }
       },
-      "id": 14,
+      "description": "Failing requests as a share of all matching requests. Orange from 1%, red from 5%. Follows the dashboard filters.",
+      "id": 34,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 4,
-        "y": 14,
+        "y": 76,
         "w": 4,
         "h": 6
       }
@@ -979,14 +2661,14 @@
         }
       },
       "description": "Failing requests that carry an ALB error_reason.",
-      "id": 15,
+      "id": 35,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 14,
+        "y": 76,
         "w": 4,
         "h": 6
       }
@@ -1032,15 +2714,15 @@
           "sort": "desc"
         }
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 16,
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 36,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 12,
-        "y": 14,
+        "y": 76,
         "w": 12,
         "h": 6
       }
@@ -1145,14 +2827,15 @@
           "fields": ""
         }
       },
-      "id": 17,
+      "description": "Failing requests counted by the status code the load balancer returned. Follows the dashboard filters.",
+      "id": 37,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 82,
         "w": 8,
         "h": 8
       }
@@ -1257,14 +2940,15 @@
           "fields": ""
         }
       },
-      "id": 18,
+      "description": "Paths with the most failing requests. Numeric path segments become {n}. Follows the dashboard filters.",
+      "id": 38,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 20,
+        "y": 82,
         "w": 8,
         "h": 8
       }
@@ -1369,14 +3053,15 @@
           "fields": ""
         }
       },
-      "id": 19,
+      "description": "Client IPs that received the most failing responses. Follows the dashboard filters.",
+      "id": 39,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 20,
+        "y": 82,
         "w": 8,
         "h": 8
       }
@@ -1481,14 +3166,15 @@
           "fields": ""
         }
       },
-      "id": 20,
+      "description": "Targets (IP:port) behind the most failing requests. Empty when no target was chosen. Follows the dashboard filters.",
+      "id": 40,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 90,
         "w": 8,
         "h": 8
       }
@@ -1593,14 +3279,15 @@
           "fields": ""
         }
       },
-      "id": 21,
+      "description": "ALB error_reason of failing requests, such as TargetConnectionErrorCode or TargetTimeout. Follows the dashboard filters.",
+      "id": 41,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 28,
+        "y": 90,
         "w": 8,
         "h": 8
       }
@@ -1705,14 +3392,15 @@
           "fields": ""
         }
       },
-      "id": 22,
+      "description": "Load balancers that returned the most failing responses. Follows the dashboard filters.",
+      "id": 42,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 90,
         "w": 8,
         "h": 8
       }
@@ -1835,15 +3523,15 @@
         "showHeader": true,
         "cellHeight": "sm"
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 23,
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 43,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 98,
         "w": 24,
         "h": 12
       }
@@ -1852,10 +3540,10 @@
       "type": "row",
       "title": "Requests",
       "collapsed": false,
-      "id": 24,
+      "id": 44,
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 110,
         "w": 24,
         "h": 1
       },
@@ -1961,14 +3649,15 @@
           "fields": ""
         }
       },
-      "id": 25,
+      "description": "Matching requests per load balancer. Follows the dashboard filters.",
+      "id": 45,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 49,
+        "y": 111,
         "w": 8,
         "h": 8
       }
@@ -2073,14 +3762,15 @@
           "fields": ""
         }
       },
-      "id": 26,
+      "description": "Matching requests by the status code the load balancer returned to the client. Follows the dashboard filters.",
+      "id": 46,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 49,
+        "y": 111,
         "w": 8,
         "h": 8
       }
@@ -2185,14 +3875,15 @@
           "fields": ""
         }
       },
-      "id": 27,
+      "description": "Matching requests by the status code the target returned. Missing when no target answered. Follows the dashboard filters.",
+      "id": 47,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 49,
+        "y": 111,
         "w": 8,
         "h": 8
       }
@@ -2297,14 +3988,15 @@
           "fields": ""
         }
       },
-      "id": 28,
+      "description": "Client IPs that sent the most matching requests. Follows the dashboard filters.",
+      "id": 48,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 57,
+        "y": 119,
         "w": 8,
         "h": 8
       }
@@ -2409,14 +4101,15 @@
           "fields": ""
         }
       },
-      "id": 29,
+      "description": "Host header of matching requests, or the TLS SNI domain when the host is missing. Follows the dashboard filters.",
+      "id": 49,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 57,
+        "y": 119,
         "w": 8,
         "h": 8
       }
@@ -2521,14 +4214,15 @@
           "fields": ""
         }
       },
-      "id": 30,
+      "description": "Most requested paths. Numeric path segments become {n} so IDs group together. Follows the dashboard filters.",
+      "id": 50,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 57,
+        "y": 119,
         "w": 8,
         "h": 8
       }
@@ -2633,14 +4327,15 @@
           "fields": ""
         }
       },
-      "id": 31,
+      "description": "User-Agent headers that sent the most matching requests. Follows the dashboard filters.",
+      "id": 51,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 127,
         "w": 8,
         "h": 8
       }
@@ -2745,14 +4440,15 @@
           "fields": ""
         }
       },
-      "id": 32,
+      "description": "Targets (IP:port) that received the most matching requests. Follows the dashboard filters.",
+      "id": 52,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 65,
+        "y": 127,
         "w": 8,
         "h": 8
       }
@@ -2857,14 +4553,15 @@
           "fields": ""
         }
       },
-      "id": 33,
+      "description": "Matching requests by HTTP method. Follows the dashboard filters.",
+      "id": 53,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 65,
+        "y": 127,
         "w": 8,
         "h": 8
       }
@@ -2969,14 +4666,15 @@
           "fields": ""
         }
       },
-      "id": 34,
+      "description": "Matching requests by listener type (http, https, h2, grpcs, ws, wss). Follows the dashboard filters.",
+      "id": 54,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 73,
+        "y": 135,
         "w": 8,
         "h": 8
       }
@@ -3081,14 +4779,15 @@
           "fields": ""
         }
       },
-      "id": 35,
+      "description": "Matching requests by the listener rule actions taken, such as forward, redirect, or fixed-response. Follows the dashboard filters.",
+      "id": 55,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 73,
+        "y": 135,
         "w": 8,
         "h": 8
       }
@@ -3193,14 +4892,15 @@
           "fields": ""
         }
       },
-      "id": 36,
+      "description": "Matching requests by negotiated TLS protocol. TLSv1 and TLSv1.1 are weak. Follows the dashboard filters.",
+      "id": 56,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 73,
+        "y": 135,
         "w": 8,
         "h": 8
       }
@@ -3305,14 +5005,15 @@
           "fields": ""
         }
       },
-      "id": 37,
+      "description": "Matching requests by negotiated TLS cipher suite. Follows the dashboard filters.",
+      "id": 57,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 81,
+        "y": 143,
         "w": 8,
         "h": 8
       }
@@ -3417,14 +5118,15 @@
           "fields": ""
         }
       },
-      "id": 38,
+      "description": "ALB error_reason values of matching requests. Follows the dashboard filters.",
+      "id": 58,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 81,
+        "y": 143,
         "w": 8,
         "h": 8
       }
@@ -3529,14 +5231,15 @@
           "fields": ""
         }
       },
-      "id": 39,
+      "description": "HTTP desync mitigation classification (Acceptable, Ambiguous, Severe) of matching requests. Follows the dashboard filters.",
+      "id": 59,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 81,
+        "y": 143,
         "w": 8,
         "h": 8
       }
@@ -3545,10 +5248,10 @@
       "type": "row",
       "title": "TLS connections",
       "collapsed": false,
-      "id": 40,
+      "id": 60,
       "gridPos": {
         "x": 0,
-        "y": 89,
+        "y": 151,
         "w": 24,
         "h": 1
       },
@@ -3599,14 +5302,15 @@
           "values": false
         }
       },
-      "id": 41,
+      "description": "ALB connection log records (conn_log_*) that match the job, load balancer, and client IP filters. Follows the dashboard filters.",
+      "id": 61,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -3657,14 +5361,14 @@
         }
       },
       "description": "Connections that negotiated a TLS protocol.",
-      "id": 42,
+      "id": 62,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 4,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -3719,14 +5423,14 @@
         }
       },
       "description": "Connections on listener 443 with no TLS protocol.",
-      "id": 43,
+      "id": 63,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -3777,14 +5481,15 @@
           "values": false
         }
       },
-      "id": 44,
+      "description": "Mean TLS handshake time of matching connections. Connections with an unknown time are left out. Follows the dashboard filters.",
+      "id": 64,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 12,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -3835,14 +5540,15 @@
           "values": false
         }
       },
-      "id": 45,
+      "description": "Longest TLS handshake time of a matching connection. Follows the dashboard filters.",
+      "id": 65,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -3892,14 +5598,15 @@
           "values": false
         }
       },
-      "id": 46,
+      "description": "Distinct load balancers with matching connection log records. Follows the dashboard filters.",
+      "id": 66,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 20,
-        "y": 90,
+        "y": 152,
         "w": 4,
         "h": 4
       }
@@ -4004,14 +5711,15 @@
           "fields": ""
         }
       },
-      "id": 47,
+      "description": "Matching connections per load balancer. Follows the dashboard filters.",
+      "id": 67,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 156,
         "w": 8,
         "h": 8
       }
@@ -4116,14 +5824,15 @@
           "fields": ""
         }
       },
-      "id": 48,
+      "description": "Connections by listener port and negotiated TLS protocol; no TLS on 443 means the handshake failed. Follows the dashboard filters.",
+      "id": 68,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 94,
+        "y": 156,
         "w": 8,
         "h": 8
       }
@@ -4228,14 +5937,15 @@
           "fields": ""
         }
       },
-      "id": 49,
+      "description": "Connections by negotiated TLS protocol. TLSv1 and TLSv1.1 are weak. Follows the dashboard filters.",
+      "id": 69,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 94,
+        "y": 156,
         "w": 8,
         "h": 8
       }
@@ -4340,14 +6050,15 @@
           "fields": ""
         }
       },
-      "id": 50,
+      "description": "Connections by negotiated TLS cipher suite. Follows the dashboard filters.",
+      "id": 70,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 102,
+        "y": 164,
         "w": 8,
         "h": 8
       }
@@ -4452,14 +6163,15 @@
           "fields": ""
         }
       },
-      "id": 51,
+      "description": "Connections by TLS key exchange group, such as X25519 or P-256. Follows the dashboard filters.",
+      "id": 71,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 102,
+        "y": 164,
         "w": 8,
         "h": 8
       }
@@ -4564,14 +6276,15 @@
           "fields": ""
         }
       },
-      "id": 52,
+      "description": "Client certificate verify status (mTLS). Anything but Success means the client certificate was refused. Follows the dashboard filters.",
+      "id": 72,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 102,
+        "y": 164,
         "w": 8,
         "h": 8
       }
@@ -4676,14 +6389,15 @@
           "fields": ""
         }
       },
-      "id": 53,
+      "description": "Client IPs that opened the most matching connections. Follows the dashboard filters.",
+      "id": 73,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 110,
+        "y": 172,
         "w": 8,
         "h": 8
       }
@@ -4788,14 +6502,15 @@
           "fields": ""
         }
       },
-      "id": 54,
+      "description": "Client IPs whose connections on listener 443 ended with no TLS protocol, a failed handshake. Follows the dashboard filters.",
+      "id": 74,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 8,
-        "y": 110,
+        "y": 172,
         "w": 8,
         "h": 8
       }
@@ -4900,14 +6615,15 @@
           "fields": ""
         }
       },
-      "id": 55,
+      "description": "TLS alerts the load balancer received from clients during the handshake. Follows the dashboard filters.",
+      "id": 75,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 16,
-        "y": 110,
+        "y": 172,
         "w": 8,
         "h": 8
       }
@@ -4916,10 +6632,10 @@
       "type": "row",
       "title": "Matching requests",
       "collapsed": false,
-      "id": 56,
+      "id": 76,
       "gridPos": {
         "x": 0,
-        "y": 118,
+        "y": 180,
         "w": 24,
         "h": 1
       },
@@ -5034,15 +6750,15 @@
         "showHeader": true,
         "cellHeight": "sm"
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 57,
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 77,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 119,
+        "y": 181,
         "w": 24,
         "h": 12
       }
@@ -5147,15 +6863,15 @@
         "showHeader": true,
         "cellHeight": "sm"
       },
-      "description": "Loki stores each line at the time ctaudit shipped it, not the request time. Pick a time range that covers the scan runs; the real request time is the event_time column.",
-      "id": 58,
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the request time, so the time range selects requests. Lines shipped with --loki-time scan are stored at the scan time; the real request time is the event_time column.",
+      "id": 78,
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
       },
       "gridPos": {
         "x": 0,
-        "y": 131,
+        "y": 193,
         "w": 24,
         "h": 10
       }
