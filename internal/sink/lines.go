@@ -15,7 +15,7 @@ import (
 // max_line_size of 256 KiB.
 const maxEventLine = 128 << 10
 
-// Encoder turns records into Loki labels and JSON lines. Job and Subcommand
+// Encoder turns records into Loki labels, record times, and JSON lines. Job and Subcommand
 // become labels on every line; RunID goes into every line.
 type Encoder struct {
 	Job        string
@@ -48,7 +48,7 @@ type eventLine struct {
 
 // Event encodes a CloudTrail record. The line keeps CloudTrail's own field
 // names.
-func (e Encoder) Event(r ctevent.Record) (Labels, []byte) {
+func (e Encoder) Event(r ctevent.Record) (Labels, time.Time, []byte) {
 	labels := e.labels("event", "account", r.RecipientAccountID, "region", r.AWSRegion)
 	line := eventLine{Kind: "event", RunID: e.RunID, Record: r}
 	b, err := json.Marshal(line)
@@ -59,7 +59,7 @@ func (e Encoder) Event(r ctevent.Record) (Labels, []byte) {
 		line.Truncated = true
 		b, _ = json.Marshal(line)
 	}
-	return labels, b
+	return labels, r.EventTime, b
 }
 
 type findingLine struct {
@@ -77,7 +77,7 @@ type findingLine struct {
 }
 
 // Finding encodes a CloudTrail finding.
-func (e Encoder) Finding(f findings.Finding) (Labels, []byte) {
+func (e Encoder) Finding(f findings.Finding) (Labels, time.Time, []byte) {
 	sev := strings.ToLower(f.Severity.String())
 	labels := e.labels("finding", "severity", sev, "account", f.Account)
 	b, _ := json.Marshal(findingLine{
@@ -86,7 +86,7 @@ func (e Encoder) Finding(f findings.Finding) (Labels, []byte) {
 		Account: f.Account, Region: f.Region, EventID: f.EventID,
 		Detail: f.Detail, EventTime: f.Time,
 	})
-	return labels, b
+	return labels, f.Time, b
 }
 
 type elbLine struct {
@@ -153,7 +153,7 @@ func known(v float64) *float64 {
 }
 
 // ELB encodes a load balancer request, or a connection when x.Conn is set.
-func (e Encoder) ELB(x elblog.Entry) (Labels, []byte) {
+func (e Encoder) ELB(x elblog.Entry) (Labels, time.Time, []byte) {
 	kind := "request"
 	if x.Conn {
 		kind = "conn"
@@ -176,5 +176,5 @@ func (e Encoder) ELB(x elblog.Entry) (Labels, []byte) {
 		Listener: x.Listener, TLSHandshakeTime: known(x.TLSHandshakeTime), IncomingTLSAlert: x.IncomingTLSAlert,
 		TLSKeyExchange: x.TLSKeyExchange, ALPNFrontend: x.ALPNFrontend, ALPNBackend: x.ALPNBackend,
 	})
-	return labels, b
+	return labels, x.Time, b
 }

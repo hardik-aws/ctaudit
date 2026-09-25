@@ -194,6 +194,7 @@ func TestRunObserveBadSettingsFailBeforeScan(t *testing.T) {
 		"bad loki url":        {args: []string{"--loki", "loki:3100"}},
 		"bad pushgateway url": {args: []string{"--pushgateway", "ftp://pg"}},
 		"bad push job":        {args: []string{"--pushgateway", "http://pg:9091", "--push-job", "a/b"}},
+		"bad loki time":       {args: []string{"--loki", "http://loki:3100", "--loki-time", "now"}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

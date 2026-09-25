@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestJSONL(t *testing.T) {
@@ -23,7 +24,7 @@ func TestJSONL(t *testing.T) {
 			w := j.NewWriter()
 			for n := range 250 {
 				b, _ := json.Marshal(map[string]int{"w": i, "n": n})
-				w.Write(Labels{"k": "v"}, b)
+				w.Write(Labels{"k": "v"}, time.Time{}, b)
 			}
 		}()
 	}

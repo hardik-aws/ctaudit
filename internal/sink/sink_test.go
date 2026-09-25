@@ -3,6 +3,7 @@ package sink
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func envMap(m map[string]string) func(string) string {
@@ -57,7 +58,9 @@ func TestCheckURL(t *testing.T) {
 
 type recWriter struct{ lines *[]string }
 
-func (w recWriter) Write(_ Labels, line []byte) { *w.lines = append(*w.lines, string(line)) }
+func (w recWriter) Write(_ Labels, _ time.Time, line []byte) {
+	*w.lines = append(*w.lines, string(line))
+}
 
 type recSink struct {
 	lines []string
@@ -70,7 +73,7 @@ func (s *recSink) Close() error      { return s.err }
 func TestMulti(t *testing.T) {
 	a, b := &recSink{}, &recSink{}
 	m := Multi(a, b)
-	m.NewWriter().Write(Labels{"k": "v"}, []byte("x"))
+	m.NewWriter().Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func TestEncoderEvent(t *testing.T) {
 		EventTime:         time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
 		RequestParameters: json.RawMessage(`{"bucketName":"b"}`),
 	}
-	labels, line := enc.Event(r)
+	labels, _, line := enc.Event(r)
 	want := Labels{"job": "ctaudit", "subcommand": "cloudtrail", "kind": "event", "account": "111122223333", "region": "us-east-1"}
 	if labels.key() != want.key() {
 		t.Errorf("labels = %v, want %v", labels, want)
@@ -45,7 +45,7 @@ func TestEncoderEvent(t *testing.T) {
 func TestEncoderEventTruncates(t *testing.T) {
 	big := `{"x":"` + strings.Repeat("a", maxEventLine) + `"}`
 	r := ctevent.Record{EventName: "PutObject", RequestParameters: json.RawMessage(big)}
-	_, line := enc.Event(r)
+	_, _, line := enc.Event(r)
 	if len(line) > maxEventLine {
 		t.Errorf("line is %d bytes, want at most %d", len(line), maxEventLine)
 	}
@@ -59,7 +59,7 @@ func TestEncoderEventTruncates(t *testing.T) {
 }
 
 func TestEncoderEventOmitsEmptyLabels(t *testing.T) {
-	labels, _ := enc.Event(ctevent.Record{})
+	labels, _, _ := enc.Event(ctevent.Record{})
 	if _, ok := labels["account"]; ok {
 		t.Errorf("labels = %v, want no empty account", labels)
 	}
@@ -70,7 +70,7 @@ func TestEncoderFinding(t *testing.T) {
 		Rule: "root-usage", Severity: findings.SevCritical, Title: "Root used",
 		Account: "111122223333", Time: time.Date(2026, 9, 1, 1, 0, 0, 0, time.UTC),
 	}
-	labels, line := enc.Finding(f)
+	labels, _, line := enc.Finding(f)
 	if labels["severity"] != "critical" || labels["kind"] != "finding" || labels["account"] != "111122223333" {
 		t.Errorf("labels = %v", labels)
 	}
@@ -87,7 +87,7 @@ func TestEncoderELB(t *testing.T) {
 		RequestTime: 0.001, TargetTime: -1, ResponseTime: -1, Latency: -1, TLSHandshakeTime: -1,
 		UserAgent: "curl/8", Time: time.Date(2026, 9, 1, 2, 0, 0, 0, time.UTC),
 	}
-	labels, line := e.ELB(x)
+	labels, _, line := e.ELB(x)
 	if labels["kind"] != "request" || labels["lb"] != "app/web/abc" || labels["subcommand"] != "elb" {
 		t.Errorf("labels = %v", labels)
 	}
@@ -108,7 +108,7 @@ func TestEncoderELB(t *testing.T) {
 	}
 
 	x.Conn = true
-	labels, line = e.ELB(x)
+	labels, _, line = e.ELB(x)
 	if labels["kind"] != "conn" || decode(t, line)["kind"] != "conn" {
 		t.Errorf("connection row: labels=%v line=%s", labels, line)
 	}

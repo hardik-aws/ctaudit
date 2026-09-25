@@ -5,9 +5,11 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,8 +37,18 @@ type LokiConfig struct {
 	Attempts int
 	Backoff  time.Duration
 	// Start is the base timestamp of every entry; entry n is sent at
-	// Start + n ns so every entry is unique. Defaults to time.Now().
+	// Start + n ns so every entry is unique. Defaults to time.Now(). In
+	// EventTime mode it stamps only lines that carry no record time.
 	Start time.Time
+	// EventTime stamps each line with the time of its record instead of the
+	// scan time, so Grafana's time picker selects request and event times.
+	// Loki only accepts a stream's lines in order within its out-of-order
+	// window, so the sink buffers every line until Close, sorts each stream
+	// oldest first, and pushes with one sender.
+	EventTime bool
+	// MaxLines (default 2,000,000) caps the lines EventTime mode buffers.
+	// Past it the sink fails rather than grow without bound.
+	MaxLines int
 	// Log, when set, gets one debug line per push attempt.
 	Log *slog.Logger
 }
@@ -50,6 +62,11 @@ type Loki struct {
 	slots  chan struct{}
 	wg     sync.WaitGroup
 	failed atomic.Bool
+	// buffered counts the lines held in EventTime mode.
+	buffered atomic.Int64
+	// rejected counts pushes Loki refused in part because entries were
+	// older than its limits (see tooOld).
+	rejected atomic.Int64
 
 	mu      sync.Mutex
 	writers []*lokiWriter
@@ -82,6 +99,12 @@ func NewLoki(cfg LokiConfig) (*Loki, error) {
 	if cfg.Start.IsZero() {
 		cfg.Start = time.Now()
 	}
+	if cfg.MaxLines <= 0 {
+		cfg.MaxLines = 2_000_000
+	}
+	if cfg.EventTime {
+		cfg.Senders = 1
+	}
 	return &Loki{
 		cfg:   cfg,
 		url:   strings.TrimRight(cfg.URL, "/") + "/loki/api/v1/push",
@@ -106,8 +129,12 @@ func (l *Loki) Close() error {
 	writers := l.writers
 	l.writers = nil
 	l.mu.Unlock()
-	for _, w := range writers {
-		w.flush()
+	if l.cfg.EventTime {
+		l.pushSorted(writers)
+	} else {
+		for _, w := range writers {
+			w.flush()
+		}
 	}
 	l.wg.Wait()
 	l.mu.Lock()
@@ -116,6 +143,85 @@ func (l *Loki) Close() error {
 		return fmt.Errorf("loki push: %w", l.err)
 	}
 	return nil
+}
+
+// Rejected returns how many pushes Loki refused in part because some
+// entries were too old or too far behind the newest entry of their stream.
+// In EventTime mode Loki keeps the other entries of such a push, so these do
+// not fail Close; in scan mode they fail it like any other 400.
+func (l *Loki) Rejected() int64 { return l.rejected.Load() }
+
+// pushSorted merges the writers' streams, sorts each stream by timestamp,
+// and sends them in batches. With one sender the batches reach Loki in
+// order, so each stream arrives oldest first.
+func (l *Loki) pushSorted(writers []*lokiWriter) {
+	if l.failed.Load() {
+		return
+	}
+	merged := map[string]*lokiStream{}
+	var order []string
+	for _, w := range writers {
+		for _, s := range w.order {
+			k := s.Stream.key()
+			m := merged[k]
+			if m == nil {
+				m = &lokiStream{Stream: s.Stream}
+				merged[k] = m
+				order = append(order, k)
+			}
+			m.Values = append(m.Values, s.Values...)
+			m.ts = append(m.ts, s.ts...)
+		}
+		w.streams, w.order, w.lines, w.bytes = nil, nil, 0, 0
+	}
+	sort.Strings(order)
+	var batch []*lokiStream
+	lines, size := 0, 0
+	flush := func() {
+		if lines > 0 {
+			l.send(batch, lines)
+		}
+		batch, lines, size = nil, 0, 0
+	}
+	for _, k := range order {
+		s := merged[k]
+		sort.Stable(byTS{s})
+		part := &lokiStream{Stream: s.Stream}
+		for _, v := range s.Values {
+			if part.Values == nil {
+				batch = append(batch, part)
+			}
+			part.Values = append(part.Values, v)
+			lines++
+			size += len(v[1])
+			if lines >= l.cfg.BatchLines || size >= l.cfg.BatchBytes {
+				flush()
+				part = &lokiStream{Stream: s.Stream}
+			}
+		}
+	}
+	flush()
+}
+
+// byTS sorts a stream's values and timestamps together.
+type byTS struct{ s *lokiStream }
+
+func (b byTS) Len() int           { return len(b.s.ts) }
+func (b byTS) Less(i, j int) bool { return b.s.ts[i] < b.s.ts[j] }
+func (b byTS) Swap(i, j int) {
+	b.s.ts[i], b.s.ts[j] = b.s.ts[j], b.s.ts[i]
+	b.s.Values[i], b.s.Values[j] = b.s.Values[j], b.s.Values[i]
+}
+
+// tooOld reports whether err is Loki refusing entries for their age: older
+// than reject_old_samples_max_age, or behind the stream's out-of-order
+// window. Loki accepts the rest of the push in that case.
+func tooOld(err error) bool {
+	var se *statusError
+	if !errors.As(err, &se) || se.code != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(se.body, "too far behind") || strings.Contains(se.body, "too old")
 }
 
 func (l *Loki) fail(err error) {
@@ -153,7 +259,13 @@ func (l *Loki) send(streams []*lokiStream, lines int) {
 			}
 			l.cfg.Auth.apply(r)
 		}, l.cfg.Log, "sink", "loki", "streams", len(streams), "lines", lines)
-		if err != nil {
+		switch {
+		case err == nil:
+		case l.cfg.EventTime && tooOld(err):
+			// Retrying cannot make an entry younger, so count it and
+			// keep going; a failure here would fail every serve tick.
+			l.rejected.Add(1)
+		default:
 			l.fail(err)
 		}
 	}()
@@ -162,6 +274,8 @@ func (l *Loki) send(streams []*lokiStream, lines int) {
 type lokiStream struct {
 	Stream Labels      `json:"stream"`
 	Values [][2]string `json:"values"`
+	// ts holds the Values timestamps as numbers, in EventTime mode only.
+	ts []int64
 }
 
 type lokiWriter struct {
@@ -172,8 +286,15 @@ type lokiWriter struct {
 	bytes   int
 }
 
-func (w *lokiWriter) Write(labels Labels, line []byte) {
+func (w *lokiWriter) Write(labels Labels, t time.Time, line []byte) {
 	if w.loki.failed.Load() {
+		return
+	}
+	event := w.loki.cfg.EventTime
+	if event && w.loki.buffered.Add(1) > int64(w.loki.cfg.MaxLines) {
+		w.loki.fail(fmt.Errorf("event-time mode buffers every line until the scan ends and more than %d matched; "+
+			"use --loki-time scan or a shorter window", w.loki.cfg.MaxLines))
+		w.streams, w.order, w.lines, w.bytes = map[string]*lokiStream{}, nil, 0, 0
 		return
 	}
 	k := labels.key()
@@ -183,8 +304,17 @@ func (w *lokiWriter) Write(labels Labels, line []byte) {
 		w.streams[k] = s
 		w.order = append(w.order, s)
 	}
-	ts := w.loki.base + w.loki.seq.Add(1)
+	var ts int64
+	if event && !t.IsZero() {
+		ts = t.UnixNano()
+	} else {
+		ts = w.loki.base + w.loki.seq.Add(1)
+	}
 	s.Values = append(s.Values, [2]string{strconv.FormatInt(ts, 10), string(line)})
+	if event {
+		s.ts = append(s.ts, ts)
+		return
+	}
 	w.lines++
 	w.bytes += len(line)
 	if w.lines >= w.loki.cfg.BatchLines || w.bytes >= w.loki.cfg.BatchBytes {

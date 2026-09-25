@@ -175,8 +175,16 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer, newS
 
 // tickObserve keeps only the observer settings serve supports: Loki and the
 // job label.
+//
+// Serve stamps Loki lines with their record time unless --loki-time says
+// otherwise, so dashboards chart request and event times.
 func (c serveConfig) tickObserve() observeFlags {
-	return observeFlags{loki: c.observe.loki, lokiTenant: c.observe.lokiTenant, pushJob: c.observe.pushJob, log: c.observe.log}
+	lokiTime := c.observe.lokiTime
+	if lokiTime == "" {
+		lokiTime = "event"
+	}
+	return observeFlags{loki: c.observe.loki, lokiTenant: c.observe.lokiTenant, lokiTime: lokiTime,
+		pushJob: c.observe.pushJob, log: c.observe.log}
 }
 
 // setLogger hands the debug logger, which may be nil, to the store, the

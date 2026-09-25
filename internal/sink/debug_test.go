@@ -35,7 +35,7 @@ func TestLokiDebugLogsAttemptsWithoutSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := l.NewWriter()
-	w.Write(Labels{"job": "ctaudit"}, []byte(`{"secret_field":"record-body"}`))
+	w.Write(Labels{"job": "ctaudit"}, time.Time{}, []byte(`{"secret_field":"record-body"}`))
 	if err := l.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

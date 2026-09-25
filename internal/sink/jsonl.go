@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 )
 
 const jsonlFlushBytes = 256 << 10
@@ -66,7 +67,7 @@ type jsonlWriter struct {
 	buf []byte
 }
 
-func (w *jsonlWriter) Write(_ Labels, line []byte) {
+func (w *jsonlWriter) Write(_ Labels, _ time.Time, line []byte) {
 	w.buf = append(w.buf, line...)
 	w.buf = append(w.buf, '\n')
 	if len(w.buf) >= jsonlFlushBytes {

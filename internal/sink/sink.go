@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Labels are the Loki stream labels of one line. Keep them low-cardinality:
@@ -35,8 +36,10 @@ func (l Labels) key() string {
 
 // Writer accepts log lines. A Writer belongs to one goroutine; it is not
 // safe for concurrent use. Errors are reported by the owning Sink's Close.
+// t is the time of the record the line describes; the zero time means it
+// has none. Sinks that stamp lines themselves may ignore it.
 type Writer interface {
-	Write(labels Labels, line []byte)
+	Write(labels Labels, t time.Time, line []byte)
 }
 
 // Sink hands out per-goroutine writers. NewWriter is safe for concurrent
@@ -74,9 +77,9 @@ func (m multi) Close() error {
 
 type multiWriter []Writer
 
-func (m multiWriter) Write(labels Labels, line []byte) {
+func (m multiWriter) Write(labels Labels, t time.Time, line []byte) {
 	for _, w := range m {
-		w.Write(labels, line)
+		w.Write(labels, t, line)
 	}
 }
 

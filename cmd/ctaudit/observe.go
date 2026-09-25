@@ -27,7 +27,9 @@ type observeFlags struct {
 	pushJob     string
 	loki        string
 	lokiTenant  string
-	jsonl       string
+	// lokiTime is "scan" or "event"; "" takes the command's default.
+	lokiTime string
+	jsonl    string
 	// log is not a flag: the caller sets it from --debug.
 	log *slog.Logger
 }
@@ -37,6 +39,7 @@ func (o *observeFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&o.pushJob, "push-job", "ctaudit", "job label for pushed metrics and Loki lines")
 	fs.StringVar(&o.loki, "loki", "", "Loki base URL to stream every matching record to")
 	fs.StringVar(&o.lokiTenant, "loki-tenant", "", "Loki tenant, sent as the X-Scope-OrgID header")
+	fs.StringVar(&o.lokiTime, "loki-time", "", "Loki line timestamp: scan (when shipped) or event (record time); default scan, and event under serve")
 	fs.StringVar(&o.jsonl, "jsonl", "", "also write every matching record to this JSON Lines file")
 }
 
@@ -47,6 +50,7 @@ var getenv = os.Getenv
 // output is off.
 type observer struct {
 	sink   sink.Sink
+	loki   *sink.Loki
 	push   *sink.Pushgateway
 	enc    sink.Encoder
 	closed bool
@@ -73,12 +77,21 @@ func newObserver(sub string, o observeFlags, now time.Time) (*observer, error) {
 			return nil, err
 		}
 	}
+	eventTime := false
+	switch o.lokiTime {
+	case "", "scan":
+	case "event":
+		eventTime = true
+	default:
+		return nil, fmt.Errorf("--loki-time must be scan or event, not %q", o.lokiTime)
+	}
 	var sinks []sink.Sink
 	if o.loki != "" {
-		l, err := sink.NewLoki(sink.LokiConfig{URL: o.loki, Tenant: o.lokiTenant, Auth: lokiAuth, Log: o.log})
+		l, err := sink.NewLoki(sink.LokiConfig{URL: o.loki, Tenant: o.lokiTenant, Auth: lokiAuth, Log: o.log, EventTime: eventTime})
 		if err != nil {
 			return nil, err
 		}
+		obs.loki = l
 		sinks = append(sinks, l)
 	}
 	if o.jsonl != "" {
@@ -156,6 +169,10 @@ func (o *observer) finish(ctx context.Context, stderr io.Writer, fs []findings.F
 			fmt.Fprintf(stderr, "ctaudit: %v\n", err)
 			ok = false
 		}
+		if n := o.lokiRejected(); n > 0 {
+			fmt.Fprintf(stderr, "ctaudit: warning: loki refused entries in %d pushes as too old or too far behind their stream; "+
+				"the rest of each push was stored\n", n)
+		}
 	}
 	if o.push == nil {
 		return ok
@@ -168,6 +185,14 @@ func (o *observer) finish(ctx context.Context, stderr io.Writer, fs []findings.F
 		return false
 	}
 	return ok
+}
+
+// lokiRejected returns the pushes Loki refused in part for entry age.
+func (o *observer) lokiRejected() int64 {
+	if o.loki == nil {
+		return 0
+	}
+	return o.loki.Rejected()
 }
 
 // commonMetrics are the counters every subcommand pushes.

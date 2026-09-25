@@ -58,7 +58,12 @@ func (f *fakeLoki) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func newTestLoki(t *testing.T, f *fakeLoki, cfg LokiConfig) *Loki {
 	t.Helper()
-	srv := httptest.NewServer(f)
+	return newTestLokiHandler(t, f, cfg)
+}
+
+func newTestLokiHandler(t *testing.T, h http.Handler, cfg LokiConfig) *Loki {
+	t.Helper()
+	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	cfg.URL = srv.URL + "/"
 	cfg.Backoff = time.Millisecond
@@ -76,9 +81,9 @@ func TestLokiPushBody(t *testing.T) {
 	w := l.NewWriter()
 	ev := Labels{"job": "ctaudit", "kind": "event"}
 	fi := Labels{"job": "ctaudit", "kind": "finding"}
-	w.Write(ev, []byte(`{"a":1}`))
-	w.Write(fi, []byte(`{"b":2}`))
-	w.Write(ev, []byte(`{"a":3}`))
+	w.Write(ev, time.Time{}, []byte(`{"a":1}`))
+	w.Write(fi, time.Time{}, []byte(`{"b":2}`))
+	w.Write(ev, time.Time{}, []byte(`{"a":3}`))
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +130,7 @@ func TestLokiBatchesAtLineLimit(t *testing.T) {
 	l := newTestLoki(t, f, LokiConfig{BatchLines: 2})
 	w := l.NewWriter()
 	for range 5 {
-		w.Write(Labels{"k": "v"}, []byte("x"))
+		w.Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	}
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
@@ -156,7 +161,7 @@ func TestLokiAuthHeaders(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeLoki{}
 			l := newTestLoki(t, f, tt.cfg)
-			l.NewWriter().Write(Labels{"k": "v"}, []byte("x"))
+			l.NewWriter().Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 			if err := l.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -175,7 +180,7 @@ func TestLokiRetriesServerError(t *testing.T) {
 		return http.StatusNoContent
 	}}
 	l := newTestLoki(t, f, LokiConfig{})
-	l.NewWriter().Write(Labels{"k": "v"}, []byte("x"))
+	l.NewWriter().Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	if err := l.Close(); err != nil {
 		t.Fatalf("Close = %v, want success after a retry", err)
 	}
@@ -187,7 +192,7 @@ func TestLokiRetriesServerError(t *testing.T) {
 func TestLokiGivesUpAfterAttempts(t *testing.T) {
 	f := &fakeLoki{status: func(int) int { return http.StatusServiceUnavailable }}
 	l := newTestLoki(t, f, LokiConfig{})
-	l.NewWriter().Write(Labels{"k": "v"}, []byte("x"))
+	l.NewWriter().Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	err := l.Close()
 	if err == nil || !strings.Contains(err.Error(), "503") {
 		t.Fatalf("Close = %v, want a 503 error", err)
@@ -200,7 +205,7 @@ func TestLokiGivesUpAfterAttempts(t *testing.T) {
 func TestLokiNoRetryOnClientError(t *testing.T) {
 	f := &fakeLoki{status: func(int) int { return http.StatusBadRequest }}
 	l := newTestLoki(t, f, LokiConfig{})
-	l.NewWriter().Write(Labels{"k": "v"}, []byte("x"))
+	l.NewWriter().Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	if err := l.Close(); err == nil || !strings.Contains(err.Error(), "400") {
 		t.Fatalf("Close = %v, want a 400 error", err)
 	}
@@ -213,14 +218,14 @@ func TestLokiDropsBatchesAfterFailure(t *testing.T) {
 	f := &fakeLoki{status: func(int) int { return http.StatusUnauthorized }}
 	l := newTestLoki(t, f, LokiConfig{BatchLines: 1, Senders: 1})
 	w := l.NewWriter()
-	w.Write(Labels{"k": "v"}, []byte("1"))
+	w.Write(Labels{"k": "v"}, time.Time{}, []byte("1"))
 	// Wait for the first send to fail before writing more.
 	deadline := time.Now().Add(5 * time.Second)
 	for !l.failed.Load() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	for range 10 {
-		w.Write(Labels{"k": "v"}, []byte("x"))
+		w.Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 	}
 	if err := l.Close(); err == nil {
 		t.Fatal("Close = nil, want an error")
@@ -240,7 +245,7 @@ func TestLokiConcurrentWriters(t *testing.T) {
 			defer wg.Done()
 			w := l.NewWriter()
 			for range 100 {
-				w.Write(Labels{"k": "v"}, []byte("x"))
+				w.Write(Labels{"k": "v"}, time.Time{}, []byte("x"))
 			}
 		}()
 	}

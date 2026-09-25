@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -217,7 +218,7 @@ func (f *flakyLoki) server(t *testing.T) *httptest.Server {
 		defer f.mu.Unlock()
 		f.calls++
 		if f.calls == 1 {
-			http.Error(w, "entry too far behind", http.StatusBadRequest)
+			http.Error(w, "invalid push", http.StatusBadRequest)
 			return
 		}
 		f.bodies = append(f.bodies, string(b))
@@ -258,6 +259,11 @@ func TestServeLokiFailureCommitsNothing(t *testing.T) {
 	defer loki.mu.Unlock()
 	if joined := strings.Join(loki.bodies, ""); !strings.Contains(joined, "wp-login.php") {
 		t.Errorf("retry did not send the records to Loki: %q", joined)
+	}
+	// Serve stamps lines with the request time by default.
+	reqNS := strconv.FormatInt(time.Date(2026, 9, 20, 10, 1, 26, 379899000, time.UTC).UnixNano(), 10)
+	if joined := strings.Join(loki.bodies, ""); !strings.Contains(joined, `"`+reqNS+`"`) {
+		t.Errorf("Loki line not stamped with the request time %s: %q", reqNS, joined)
 	}
 	text := s.state.metrics().Text()
 	for _, want := range []string{
