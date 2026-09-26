@@ -9,6 +9,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/ctevent"
 	"github.com/gsmappdev/ctaudit/internal/elblog"
 	"github.com/gsmappdev/ctaudit/internal/findings"
+	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
 
 var enc = Encoder{Job: "ctaudit", Subcommand: "cloudtrail", RunID: "run-1"}
@@ -111,5 +112,78 @@ func TestEncoderELB(t *testing.T) {
 	labels, _, line = e.ELB(x)
 	if labels["kind"] != "conn" || decode(t, line)["kind"] != "conn" {
 		t.Errorf("connection row: labels=%v line=%s", labels, line)
+	}
+}
+
+func TestEncoderWAF(t *testing.T) {
+	e := Encoder{Job: "ctaudit", Subcommand: "waf", RunID: "run-3"}
+	x := waflog.Entry{
+		WebACL: "prod-acl", Action: "BLOCK",
+		Rule: "rule-123", RuleType: "MANAGED", RuleGroup: "AWSManagedRulesSQLiRuleSet",
+		Source: "CLOUDFRONT", SourceID: "dist-abc",
+		ClientIP: "1.2.3.4", Country: "US", Method: "POST", Host: "example.com",
+		URI: "/api/login", UserAgent: "curl/8",
+		Labels: []string{"label1"}, CountRules: []string{"rule-456"}, RateRule: "rate-123",
+		ResponseCode: 403, Oversize: true, JA3: "ja3-abc", JA4: "ja4-abc",
+		RequestID: "req-123", ChallengeFailed: true,
+		Time: time.Date(2026, 9, 1, 3, 0, 0, 0, time.UTC),
+	}
+	labels, retTime, line := e.WAF(x)
+
+	// Check labels
+	want := Labels{
+		"job": "ctaudit", "subcommand": "waf", "kind": "request",
+		"acl": "prod-acl", "action": "BLOCK",
+	}
+	if labels.key() != want.key() {
+		t.Errorf("labels = %v, want %v", labels, want)
+	}
+
+	// Check returned time
+	if retTime != x.Time {
+		t.Errorf("returned time = %v, want %v", retTime, x.Time)
+	}
+
+	// Check JSON decodes correctly
+	m := decode(t, line)
+
+	// Required keys
+	if m["kind"] != "request" || m["run_id"] != "run-3" || m["event_time"] != "2026-09-01T03:00:00Z" || m["action"] != "BLOCK" {
+		t.Errorf("missing or wrong required key: line = %s", line)
+	}
+
+	// Optional keys that should be present
+	requiredKeys := []string{"web_acl", "rule", "rule_type", "rule_group", "source", "source_id",
+		"client_ip", "country", "method", "host", "uri", "user_agent", "labels", "count_rules",
+		"rate_rule", "response_code", "oversize", "ja3", "ja4", "request_id", "challenge_failed"}
+	for _, k := range requiredKeys {
+		if _, ok := m[k]; !ok {
+			t.Errorf("key %s missing from line: %s", k, line)
+		}
+	}
+}
+
+func TestEncoderWAFOmitsEmptyFields(t *testing.T) {
+	e := Encoder{Job: "ctaudit", Subcommand: "waf", RunID: "run-4"}
+	x := waflog.Entry{
+		WebACL: "prod-acl", Action: "ALLOW",
+		Time: time.Date(2026, 9, 1, 4, 0, 0, 0, time.UTC),
+	}
+	_, _, line := e.WAF(x)
+	m := decode(t, line)
+
+	// Required fields should always be present
+	if m["kind"] != "request" || m["run_id"] != "run-4" || m["action"] != "ALLOW" {
+		t.Errorf("required field missing: %s", line)
+	}
+
+	// Optional fields should be omitted when empty
+	emptyFields := []string{"rule", "rule_type", "rule_group", "source", "source_id",
+		"client_ip", "country", "method", "host", "uri", "user_agent", "labels", "count_rules",
+		"rate_rule", "ja3", "ja4", "request_id"}
+	for _, k := range emptyFields {
+		if _, ok := m[k]; ok {
+			t.Errorf("empty field %s should be omitted but is present: %s", k, line)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/ctevent"
 	"github.com/gsmappdev/ctaudit/internal/elblog"
 	"github.com/gsmappdev/ctaudit/internal/findings"
+	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
 
 // maxEventLine is the size above which a CloudTrail line is re-encoded
@@ -175,6 +176,47 @@ func (e Encoder) ELB(x elblog.Entry) (Labels, time.Time, []byte) {
 		ClientCertValidity: x.ClientCertValidity, ClientCertSerial: x.ClientCertSerial,
 		Listener: x.Listener, TLSHandshakeTime: known(x.TLSHandshakeTime), IncomingTLSAlert: x.IncomingTLSAlert,
 		TLSKeyExchange: x.TLSKeyExchange, ALPNFrontend: x.ALPNFrontend, ALPNBackend: x.ALPNBackend,
+	})
+	return labels, x.Time, b
+}
+
+type wafLine struct {
+	Kind            string    `json:"kind"`
+	RunID           string    `json:"run_id"`
+	EventTime       time.Time `json:"event_time"`
+	WebACL          string    `json:"web_acl,omitempty"`
+	Action          string    `json:"action"`
+	Rule            string    `json:"rule,omitempty"`
+	RuleType        string    `json:"rule_type,omitempty"`
+	RuleGroup       string    `json:"rule_group,omitempty"`
+	Source          string    `json:"source,omitempty"`
+	SourceID        string    `json:"source_id,omitempty"`
+	ClientIP        string    `json:"client_ip,omitempty"`
+	Country         string    `json:"country,omitempty"`
+	Method          string    `json:"method,omitempty"`
+	Host            string    `json:"host,omitempty"`
+	URI             string    `json:"uri,omitempty"`
+	UserAgent       string    `json:"user_agent,omitempty"`
+	Labels          []string  `json:"labels,omitempty"`
+	CountRules      []string  `json:"count_rules,omitempty"`
+	RateRule        string    `json:"rate_rule,omitempty"`
+	ResponseCode    int       `json:"response_code,omitempty"`
+	Oversize        bool      `json:"oversize,omitempty"`
+	JA3             string    `json:"ja3,omitempty"`
+	JA4             string    `json:"ja4,omitempty"`
+	RequestID       string    `json:"request_id,omitempty"`
+	ChallengeFailed bool      `json:"challenge_failed,omitempty"`
+}
+
+// WAF encodes one WAF-inspected request.
+func (e Encoder) WAF(x waflog.Entry) (Labels, time.Time, []byte) {
+	labels := e.labels("request", "acl", x.WebACL, "action", x.Action)
+	b, _ := json.Marshal(wafLine{
+		Kind: "request", RunID: e.RunID, EventTime: x.Time, WebACL: x.WebACL, Action: x.Action,
+		Rule: x.Rule, RuleType: x.RuleType, RuleGroup: x.RuleGroup, Source: x.Source, SourceID: x.SourceID,
+		ClientIP: x.ClientIP, Country: x.Country, Method: x.Method, Host: x.Host, URI: x.URI, UserAgent: x.UserAgent,
+		Labels: x.Labels, CountRules: x.CountRules, RateRule: x.RateRule, ResponseCode: x.ResponseCode,
+		Oversize: x.Oversize, JA3: x.JA3, JA4: x.JA4, RequestID: x.RequestID, ChallengeFailed: x.ChallengeFailed,
 	})
 	return labels, x.Time, b
 }
