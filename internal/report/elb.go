@@ -49,7 +49,7 @@ var elbTemplate = template.Must(template.New("elb").Funcs(baseFuncs()).Funcs(tem
 // tone classifies a table value for colour coding: "crit", "warn", "ok",
 // "info", or "" for plain. It recognises HTTP status codes, TLS protocol
 // names (SSLv3, TLSv1 and TLSv1.1 are weak), the listener/TLS keys built by
-// stats.ConnSummary, and client certificate verify results.
+// stats.ConnSummary, client certificate verify results, and AWS WAF actions.
 func tone(v string) string {
 	v = strings.TrimSpace(v)
 	if len(v) == 3 && v[0] >= '1' && v[0] <= '5' && strings.Trim(v, "0123456789") == "" {
@@ -80,6 +80,14 @@ func tone(v string) string {
 	case strings.HasPrefix(v, "Failed"):
 		return "crit"
 	case v == "Success":
+		return "ok"
+	case v == "BLOCK":
+		return "crit"
+	case v == "CAPTCHA", v == "CHALLENGE":
+		return "warn"
+	case v == "COUNT":
+		return "info"
+	case v == "ALLOW":
 		return "ok"
 	}
 	return ""

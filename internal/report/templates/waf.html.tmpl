@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS WAF Logs {{.Since}} .. {{.Until}}</title>
+<style>{{elbcss}}</style>
+</head>
+<body>
+<header class="topbar">
+<div class="topbar-in">
+<div class="brand">AWS WAF Logs<small>{{.Since}} .. {{.Until}}</small></div>
+<nav aria-label="Sections">
+<a href="#overview">Overview</a>
+<a href="#findings">Findings</a>
+<a href="#hourly">Hourly</a>
+{{if .Tables}}<a href="#breakdown">Breakdown</a>{{end}}
+<a href="#requests">Requests</a>
+{{if .Res.Errors}}<a href="#errors">Errors</a>{{end}}
+</nav>
+</div>
+</header>
+<main>
+
+<section id="overview" aria-labelledby="overview-h">
+<h1 id="overview-h">AWS WAF Logs</h1>
+<dl class="facts">
+<div><dt>Bucket</dt><dd class="mono">{{.Meta.Bucket}}</dd></div>
+<div><dt>Window (UTC)</dt><dd>{{.Since}} .. {{.Until}} · {{.Days}} days</dd></div>
+<div><dt>Accounts</dt><dd class="mono">{{join .Meta.Accounts}}</dd></div>
+<div><dt>Regions</dt><dd>{{join .Meta.Regions}}</dd></div>
+<div><dt>First / last request</dt><dd>{{ts .Summary.First}} · {{ts .Summary.Last}}</dd></div>
+<div><dt>Scan</dt><dd>{{num .Res.ObjectsScanned}} objects · {{num .Res.RecordsRead}} records</dd></div>
+<div><dt>Matched</dt><dd>{{num .Res.MatchedRecords}} requests</dd></div>
+<div><dt>Generated</dt><dd>{{.Generated}} · took {{.Elapsed}}</dd></div>
+</dl>
+</section>
+
+<section aria-label="Request totals">
+<div class="kpis">
+<div class="kpi"><div class="v">{{num .Summary.Total}}</div><div class="k">Requests</div></div>
+<div class="kpi{{if .Summary.Blocked}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Blocked}}</div><div class="k">Blocked</div></div>
+<div class="kpi"><div class="v">{{num (index .Summary.ByAction "ALLOW")}}</div><div class="k">Allowed</div></div>
+<div class="kpi"><div class="v">{{num (index .Summary.ByAction "COUNT")}}</div><div class="k">Counted</div></div>
+<div class="kpi{{if .Challenged}} warn{{end}}"><div class="v">{{num .Challenged}}</div><div class="k">Challenged</div></div>
+<div class="kpi"><div class="v">{{num .WebACLCount}}</div><div class="k">Web ACLs</div></div>
+<div class="kpi{{if .Summary.Blocked}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{.BlockRate}}</div><div class="k">Block rate</div></div>
+</div>
+</section>
+
+<section id="findings" aria-labelledby="findings-h">
+<h2 id="findings-h">Findings ({{len .Res.Findings}})</h2>
+{{if .Res.Findings}}<div class="panel"><div class="scroll"><table class="data">
+<thead><tr><th>Severity</th><th>Rule</th><th>Title</th><th>Client or rule</th><th>Detail</th><th>Time</th></tr></thead>
+<tbody>
+{{range .Res.Findings}}<tr><td><span class="pill {{sevtone .Severity}}">{{.Severity}}</span></td><td class="mono">{{.Rule}}</td><td>{{.Title}}</td><td class="mono">{{dash .Actor}}</td><td class="wrap">{{.Detail}}</td><td class="t">{{ts .Time}}</td></tr>
+{{end}}</tbody>
+</table></div></div>{{else}}<p class="empty">No findings.</p>{{end}}
+{{if .Res.FindingsDropped}}<p class="note">{{num .Res.FindingsDropped}} more findings not shown.</p>{{end}}
+</section>
+
+<section id="hourly" aria-labelledby="hourly-h">
+<h2 id="hourly-h">Actions over time <span class="sub">UTC · hover a bar for the per-action split</span></h2>
+<div class="panel chart">
+<div class="hours" role="img" aria-label="Actions per hour">
+{{range .Hours}}<div class="hour" title="{{.Key}} — {{.Title}}"><span class="tip">{{.Key}} · {{num .Count}}</span><div class="col" style="height:{{.Pct}}%"></div></div>
+{{end}}</div>
+</div>
+</section>
+
+{{if .Tables}}<section id="breakdown" aria-labelledby="breakdown-h">
+<h2 id="breakdown-h">Request breakdown <span class="sub">top values by request count</span></h2>
+<div class="grid">
+{{range .Tables}}{{template "rank" .}}
+{{end}}</div>
+</section>{{end}}
+
+<section id="requests" aria-labelledby="requests-h">
+<h2 id="requests-h">Matching requests (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
+<div class="panel">
+{{if .Matches}}<div class="tools">
+<input type="search" id="waf-filter" data-filter="waf-table" placeholder="Filter rows: IP, rule, host…" aria-label="Filter requests">
+<span class="count" data-count="waf-table" aria-live="polite"></span>
+</div>
+<div class="scroll"><table class="data" id="waf-table">
+<thead><tr><th>Time</th><th>Web ACL</th><th>Action</th><th>Rule</th><th>Client IP</th><th>Country</th><th>Method</th><th>Host</th><th>URI</th><th>User agent</th></tr></thead>
+<tbody>
+{{range .Matches}}<tr><td class="t">{{ts .Time}}</td><td class="mono">{{dash .WebACL}}</td><td><span class="pill {{tone .Action}}">{{.Action}}</span></td><td class="mono">{{dash .Rule}}</td><td class="mono">{{.ClientIP}}</td><td>{{dash .Country}}</td><td>{{dash .Method}}</td><td class="mono">{{dash .Host}}</td><td class="mono wrap">{{dash .URI}}</td><td class="wrap">{{dash .UserAgent}}</td></tr>
+{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">No matching requests in this window.</p>{{end}}
+</div>
+</section>
+
+{{if .Res.Errors}}<section id="errors" aria-label="Errors">
+<details class="panel errors">
+<summary>Errors ({{len .Res.Errors}}) <span class="sub">objects or lines that could not be read</span></summary>
+<ul>{{range .Res.Errors}}<li class="mono">{{.}}</li>{{end}}</ul>
+</details>
+</section>{{end}}
+
+<p class="note">Tip: click a column header to sort; use the filter box to narrow rows (space-separated terms must all match).</p>
+</main>
+<script>{{elbjs}}</script>
+</body>
+</html>
+{{define "val"}}{{$t := tone .}}{{if $t}}<span class="pill {{$t}}">{{.}}</span>{{else}}{{dash .}}{{end}}{{end}}
+{{define "rank"}}<div class="panel">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} shown</span></div>
+<table class="rank">
+<thead><tr><th scope="col">{{.KeyHeader}}</th><th scope="col" class="cnt">Count</th><th scope="col"><span class="sr">share</span></th></tr></thead>
+<colgroup><col><col style="width:84px"><col style="width:26%"></colgroup>
+<tbody>
+{{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{template "val" .Key}}</td><td class="cnt">{{num .Count}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}
