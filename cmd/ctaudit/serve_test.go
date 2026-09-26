@@ -86,6 +86,18 @@ func newTestServer(t *testing.T, store s3src.ObjectStore, clock *fakeClock, extr
 	return newServer(cfg, store, clock.now, &stderr), &stderr
 }
 
+// newTestWAFServer parses serve flags for waf and builds a server over store.
+func newTestWAFServer(t *testing.T, store s3src.ObjectStore, clock *fakeClock, extra ...string) (*server, *bytes.Buffer) {
+	t.Helper()
+	args := append([]string{"waf", "--bucket", "b", "--accounts", "111122223333", "--regions", "us-east-1"}, extra...)
+	cfg, err := parseServeArgs(args, clock.now(), io.Discard)
+	if err != nil {
+		t.Fatalf("parseServeArgs: %v", err)
+	}
+	var stderr bytes.Buffer
+	return newServer(cfg, store, clock.now, &stderr), &stderr
+}
+
 func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -118,6 +130,31 @@ func TestRunServeRejectsFlags(t *testing.T) {
 	}
 }
 
+func TestRunServeWAFRejectsFlags(t *testing.T) {
+	cases := map[string][]string{
+		"since":       {"waf", "--since", "2026-09-20"},
+		"until":       {"waf", "--until", "2026-09-20"},
+		"html":        {"waf", "--html", "x.html"},
+		"pdf":         {"waf", "--pdf", "x.pdf"},
+		"pushgateway": {"waf", "--pushgateway", "http://pg:9091"},
+		"jsonl":       {"waf", "--jsonl", "x.jsonl"},
+		"fail-on":     {"waf", "--fail-on", "high"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			args := append(args, "--bucket", "b", "--accounts", "111122223333", "--regions", "us-east-1")
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), append([]string{"serve"}, args...), &stdout, &stderr, wafStore(t, wafCleanAllow), serveNow)
+			if code != exitFailed {
+				t.Fatalf("exit = %d, want %d", code, exitFailed)
+			}
+			if !strings.Contains(stderr.String(), "--"+name) {
+				t.Errorf("stderr does not name --%s: %s", name, stderr.String())
+			}
+		})
+	}
+}
+
 func TestRunServeBadDurations(t *testing.T) {
 	cases := map[string][]string{
 		"interval too short":      {"--interval", "30s"},
@@ -140,7 +177,7 @@ func TestRunServeUnknownSubcommand(t *testing.T) {
 	if code := run(context.Background(), []string{"serve", "vpc"}, &stdout, &stderr, elbStore(t), serveNow); code != exitFailed {
 		t.Fatalf("exit = %d, want %d", code, exitFailed)
 	}
-	if !strings.Contains(stderr.String(), "serve cloudtrail|elb") {
+	if !strings.Contains(stderr.String(), "serve cloudtrail|elb|waf") {
 		t.Errorf("stderr missing usage: %s", stderr.String())
 	}
 }
@@ -375,4 +412,87 @@ func TestServeLoopRunsFirstTickAndStops(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func TestServeWAFTickCommitsAndMetrics(t *testing.T) {
+	objects := map[string][]byte{testWAFKey: serveGz(t, wafCleanAllow, wafCleanBlock, wafExploitAllow)}
+	store := &countingStore{MemStore: s3src.NewMemStore(objects)}
+	clock := &fakeClock{t: serveNow}
+	s, stderr := newTestWAFServer(t, store, clock)
+
+	s.tick(context.Background())
+	if n := store.gets.Load(); n != 1 {
+		t.Fatalf("first tick Get calls = %d, want 1", n)
+	}
+	if !s.state.isSeen(testWAFKey) {
+		t.Fatal("key not seen after commit")
+	}
+	if !strings.Contains(stderr.String(), "ctaudit serve: waf tick ok") {
+		t.Errorf("first tick line = %q", stderr.String())
+	}
+
+	text := s.state.metrics().Text()
+	for _, want := range []string{
+		`ctaudit_waf_requests_total{action="BLOCK",subcommand="waf"} 1`,
+		`ctaudit_waf_requests_total{action="ALLOW",subcommand="waf"} 2`,
+		`ctaudit_waf_findings_total{severity="critical",subcommand="waf"} 1`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("metrics missing %q:\n%s", want, text)
+		}
+	}
+
+	// A second tick over the same key adds nothing: no new Get calls, and
+	// the totals are unchanged.
+	clock.advance(15 * time.Minute)
+	s.tick(context.Background())
+	if n := store.gets.Load(); n != 1 {
+		t.Fatalf("second tick fetched again: Get calls = %d, want 1", n)
+	}
+	text = s.state.metrics().Text()
+	if !strings.Contains(text, `ctaudit_waf_requests_total{action="ALLOW",subcommand="waf"} 2`) {
+		t.Errorf("second tick changed totals for an already-seen key:\n%s", text)
+	}
+}
+
+func TestServeWAFReport(t *testing.T) {
+	objects := map[string][]byte{testWAFKey: serveGz(t, wafCleanAllow, wafCleanBlock)}
+	clock := &fakeClock{t: serveNow}
+	s, _ := newTestWAFServer(t, s3src.NewMemStore(objects), clock)
+	h := s.handler()
+
+	if rec := get(t, h, "/report"); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/report before first tick = %d, want 503", rec.Code)
+	}
+	s.tick(context.Background())
+
+	// A second tick adds a new object under the same web ACL and day whose
+	// exploit finding must survive into the merged report.
+	objects["AWSLogs/111122223333/WAFLogs/us-east-1/prod-acl/2026/09/20/10/05/c.log.gz"] = serveGz(t, wafExploitAllow)
+	clock.advance(15 * time.Minute)
+	s.tick(context.Background())
+
+	rec := get(t, h, "/report")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/report = %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	page := rec.Body.String()
+	if strings.Contains(page, "<link") || strings.Contains(page, `src="http`) {
+		t.Error("report is not self-contained")
+	}
+	if !strings.Contains(page, "Matching requests") {
+		t.Error("report missing the matching requests section")
+	}
+	if !strings.Contains(page, "Exploit payload allowed") {
+		t.Error("report findings should include the merged tick's exploit finding")
+	}
+}
+
+func TestServeUsageMentionsWAF(t *testing.T) {
+	if !strings.Contains(serveUsage, "waf") {
+		t.Errorf("serveUsage = %q, missing waf", serveUsage)
+	}
 }

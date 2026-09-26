@@ -22,11 +22,12 @@ var (
 	statusClasses = []string{"2xx", "3xx", "4xx", "5xx", "other"}
 )
 
-// tickResult is one committed tick. Exactly one of CT and ELB is set.
+// tickResult is one committed tick. Exactly one of CT, ELB, and WAF is set.
 type tickResult struct {
 	At  time.Time
 	CT  *engine.Result
 	ELB *engine.ELBResult
+	WAF *engine.WAFResult
 }
 
 // serveTotals holds the counters that only ever grow.
@@ -49,6 +50,7 @@ type serveTotals struct {
 	handshakeFail  int
 	handshakeSum   float64
 	handshakeCount int
+	wafByAction    map[string]int
 }
 
 // serveState is everything serve keeps between ticks: which object keys
@@ -79,6 +81,7 @@ func newServeState(sub string, interval, lookback time.Duration) *serveState {
 			scans:       map[string]int{},
 			severity:    map[findings.Severity]int{},
 			statusClass: map[string]int{},
+			wafByAction: map[string]int{},
 		},
 	}
 }
@@ -138,6 +141,19 @@ func (s *serveState) commit(now time.Time, t tickResult, readKeys []string, errs
 			tot.handshakeFail += c.HandshakeFailed
 			tot.handshakeSum += c.HandshakeSum
 			tot.handshakeCount += c.HandshakeCount
+		}
+	}
+	if w := t.WAF; w != nil {
+		tot.objects += w.ObjectsScanned
+		tot.read += w.RecordsRead
+		tot.matched += w.MatchedRecords
+		for _, f := range w.Findings {
+			tot.severity[f.Severity]++
+		}
+		if sum := w.Summary; sum != nil {
+			for action, n := range sum.ByAction {
+				tot.wafByAction[action] += n
+			}
 		}
 	}
 
@@ -256,6 +272,13 @@ func (s *serveState) metrics() *sink.Metrics {
 		one("ctaudit_elb_tls_handshake_failed_total", "Matching connections whose TLS handshake failed.", float64(tot.handshakeFail), "counter")
 		one("ctaudit_elb_tls_handshake_seconds_sum", "Sum of measured TLS handshake time in seconds.", tot.handshakeSum, "counter")
 		one("ctaudit_elb_tls_handshake_seconds_count", "Connections with a measured TLS handshake time.", float64(tot.handshakeCount), "counter")
+	case "waf":
+		for _, a := range wafActions {
+			with("ctaudit_waf_requests_total", "Matching requests by WAF action.", "action", a, float64(tot.wafByAction[a]))
+		}
+		for _, sev := range severities {
+			with("ctaudit_waf_findings_total", "Rule hits by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
+		}
 	}
 
 	if !s.lastScan.IsZero() {

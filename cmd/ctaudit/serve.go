@@ -22,6 +22,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/report"
 	"github.com/gsmappdev/ctaudit/internal/s3src"
 	"github.com/gsmappdev/ctaudit/internal/stats"
+	"github.com/gsmappdev/ctaudit/internal/wafrules"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 	maxLookback     = 720 * time.Hour
 	shutdownGrace   = 10 * time.Second
 	reportCSP       = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
-	serveUsage      = "usage: ctaudit serve cloudtrail|elb [flags]"
+	serveUsage      = "usage: ctaudit serve cloudtrail|elb|waf [flags]"
 	day             = 24 * time.Hour
 	metricsMIMEType = "text/plain; version=0.0.4; charset=utf-8"
 )
@@ -38,8 +39,8 @@ const (
 // server. They are rejected only when set explicitly.
 var serveRejected = []string{"since", "until", "html", "pdf", "pushgateway", "jsonl", "fail-on"}
 
-// serveConfig is the parsed serve command line. Exactly one of ct and elb is
-// set; their scope days and filter window are replaced on every tick.
+// serveConfig is the parsed serve command line. Exactly one of ct, elb, and
+// waf is set; their scope days and filter window are replaced on every tick.
 type serveConfig struct {
 	sub      string
 	interval time.Duration
@@ -52,6 +53,7 @@ type serveConfig struct {
 	meta     report.Meta
 	ct       *config
 	elb      *elbConfig
+	waf      *wafConfig
 }
 
 func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig, error) {
@@ -80,6 +82,13 @@ func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig,
 			return serveConfig{}, err
 		}
 		sc.sub, sc.elb, set = "elb", &cfg, s
+		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
+	case "waf":
+		cfg, s, err := parseWAFArgsFlags(args[1:], now, usage, extra)
+		if err != nil {
+			return serveConfig{}, err
+		}
+		sc.sub, sc.waf, set = "waf", &cfg, s
 		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
 	default:
 		return serveConfig{}, fmt.Errorf("unknown serve subcommand %q; %s", args[0], serveUsage)
@@ -197,6 +206,9 @@ func (c *serveConfig) setLogger(log *slog.Logger) {
 	if c.elb != nil {
 		c.elb.Opts.Debug = log
 	}
+	if c.waf != nil {
+		c.waf.Opts.Debug = log
+	}
 }
 
 // server runs the scan loop and answers HTTP requests from the shared state.
@@ -276,6 +288,18 @@ func (s *server) tick(ctx context.Context) {
 			var res engine.Result
 			if res, err = engine.Run(ctx, s.store, opts); err == nil {
 				t.CT = &res
+				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
+				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
+			}
+		case s.cfg.waf != nil:
+			opts := s.cfg.waf.Opts
+			opts.Scope.Start, opts.Scope.End = scopeStart, scopeEnd
+			opts.Filter.Since, opts.Filter.Until = since, until
+			opts.Skip = s.state.isSeen
+			opts.Emit = obs.wafEmit()
+			var res engine.WAFResult
+			if res, err = engine.RunWAF(ctx, s.store, opts); err == nil {
+				t.WAF = &res
 				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
 				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
 			}
@@ -385,9 +409,12 @@ func (s *server) serveReport(w http.ResponseWriter, _ *http.Request) {
 
 	var buf bytes.Buffer
 	var err error
-	if s.cfg.ct != nil {
+	switch {
+	case s.cfg.ct != nil:
 		err = report.HTML(&buf, mergeCT(ticks, s.cfg.ct.Opts.MaxEvents), meta, s.cfg.topN)
-	} else {
+	case s.cfg.waf != nil:
+		err = report.WAFHTML(&buf, mergeWAF(ticks, s.cfg.waf.Opts.MaxEvents, s.cfg.waf.Opts.BlockThreshold), meta, s.cfg.topN)
+	default:
 		err = report.ELBHTML(&buf, mergeELB(ticks, s.cfg.elb.Opts.MaxEvents), meta, s.cfg.topN)
 	}
 	if err != nil {
@@ -468,5 +495,41 @@ func mergeELB(ticks []tickResult, maxEvents int) engine.ELBResult {
 			*list = l[:maxEvents]
 		}
 	}
+	return out
+}
+
+// mergeWAF folds the stored WAF ticks into one result, keeping the earliest
+// maxEvents matching requests. Findings are recomputed from the merged
+// summary with wafrules.Detect, using the configured block threshold, so the
+// report reflects every committed tick rather than just the last one.
+func mergeWAF(ticks []tickResult, maxEvents, blockThreshold int) engine.WAFResult {
+	out := engine.WAFResult{Summary: stats.NewWAFSummary()}
+	acls := map[string]bool{}
+	for _, t := range ticks {
+		r := t.WAF
+		if r == nil {
+			continue
+		}
+		out.Summary.Merge(r.Summary)
+		out.Matches = append(out.Matches, r.Matches...)
+		out.ObjectsScanned += r.ObjectsScanned
+		out.RecordsRead += r.RecordsRead
+		out.MatchedRecords += r.MatchedRecords
+		out.Errors = append(out.Errors, r.Errors...)
+		out.Elapsed += r.Elapsed
+		for _, acl := range r.WebACLs {
+			acls[acl] = true
+		}
+	}
+	out.WebACLs = make([]string, 0, len(acls))
+	for acl := range acls {
+		out.WebACLs = append(out.WebACLs, acl)
+	}
+	sort.Strings(out.WebACLs)
+	sort.SliceStable(out.Matches, func(i, j int) bool { return out.Matches[i].Time.Before(out.Matches[j].Time) })
+	if len(out.Matches) > maxEvents {
+		out.Matches = out.Matches[:maxEvents]
+	}
+	out.Findings, out.FindingsDropped = wafrules.Detect(out.Summary, wafrules.Options{BlockThreshold: blockThreshold})
 	return out
 }

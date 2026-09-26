@@ -167,3 +167,32 @@ func TestServeStateELBMetrics(t *testing.T) {
 		t.Error("elb state renders findings")
 	}
 }
+
+func TestServeStateWAFMetrics(t *testing.T) {
+	s := newServeState("waf", time.Minute, time.Hour)
+	sum := stats.NewWAFSummary()
+	sum.ByAction["BLOCK"] = 3
+	sum.ByAction["ALLOW"] = 5
+	fs := []findings.Finding{{Severity: findings.SevCritical}, {Severity: findings.SevHigh}}
+	s.commit(stateT0, tickResult{WAF: &engine.WAFResult{
+		Summary: sum, Findings: fs, RecordsRead: 8, MatchedRecords: 8, ObjectsScanned: 1,
+	}}, []string{"x"}, 0, 0)
+
+	text := s.metrics().Text()
+	for _, want := range []string{
+		`ctaudit_waf_requests_total{action="BLOCK",subcommand="waf"} 3`,
+		`ctaudit_waf_requests_total{action="ALLOW",subcommand="waf"} 5`,
+		`ctaudit_waf_requests_total{action="COUNT",subcommand="waf"} 0`,
+		`ctaudit_waf_findings_total{severity="critical",subcommand="waf"} 1`,
+		`ctaudit_waf_findings_total{severity="high",subcommand="waf"} 1`,
+		`ctaudit_waf_findings_total{severity="low",subcommand="waf"} 0`,
+		`ctaudit_records_read_total{subcommand="waf"} 8`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("metrics missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "ctaudit_elb_") {
+		t.Error("waf state renders ELB families")
+	}
+}
