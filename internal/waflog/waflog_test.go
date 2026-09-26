@@ -16,6 +16,15 @@ const rateBased = `{"timestamp":1789900002000,"webaclId":"arn:aws:wafv2:us-east-
 
 const captchaFail = `{"timestamp":1789900003000,"webaclId":"arn:aws:wafv2:us-east-1:1:regional/webacl/prod-acl/abcd","terminatingRuleId":"bot-captcha","terminatingRuleType":"REGULAR","action":"CAPTCHA","httpSourceName":"ALB","httpRequest":{"clientIp":"192.0.2.2","country":"BR","headers":[],"uri":"/signup","httpMethod":"GET","requestId":"4"},"captchaResponse":{"responseCode":405,"failureReason":"TOKEN_MISSING"}}`
 
+// allowCountOverriddenGroup is allowed by Default_Action, but its managed
+// group would have blocked the request had its override action not been
+// Count: ruleGroupList carries a terminatingRule anyway.
+const allowCountOverriddenGroup = `{"timestamp":1789900004000,"webaclId":"arn:aws:wafv2:us-east-1:1:regional/webacl/prod-acl/abcd","terminatingRuleId":"Default_Action","terminatingRuleType":"REGULAR","action":"ALLOW","httpSourceName":"ALB","ruleGroupList":[{"ruleGroupId":"AWS#AWSManagedRulesCommonRuleSet","terminatingRule":{"ruleId":"SizeRestrictions_BODY","action":"BLOCK"},"nonTerminatingMatchingRules":[],"excludedRules":null}],"httpRequest":{"clientIp":"198.51.100.9","country":"US","headers":[],"uri":"/upload","httpMethod":"POST","requestId":"5"}}`
+
+// blockAfterCountOverriddenGroup is blocked by group B after group A's own
+// terminatingRule was overridden to Count.
+const blockAfterCountOverriddenGroup = `{"timestamp":1789900005000,"webaclId":"arn:aws:wafv2:us-east-1:1:regional/webacl/prod-acl/abcd","terminatingRuleId":"AWS-AWSManagedRulesSQLiRuleSet","terminatingRuleType":"MANAGED_RULE_GROUP","action":"BLOCK","httpSourceName":"ALB","ruleGroupList":[{"ruleGroupId":"AWS#AWSManagedRulesCommonRuleSet","terminatingRule":{"ruleId":"SizeRestrictions_BODY","action":"BLOCK"},"nonTerminatingMatchingRules":[],"excludedRules":null},{"ruleGroupId":"AWS#AWSManagedRulesSQLiRuleSet","terminatingRule":{"ruleId":"SQLi_BODY","action":"BLOCK"},"nonTerminatingMatchingRules":[],"excludedRules":null}],"httpRequest":{"clientIp":"198.51.100.10","country":"US","headers":[],"uri":"/upload","httpMethod":"POST","requestId":"6"}}`
+
 func TestParseManagedBlock(t *testing.T) {
 	e, err := Parse([]byte(blockManaged))
 	if err != nil {
@@ -72,6 +81,34 @@ func TestParseRateAndCaptcha(t *testing.T) {
 	c, _ := Parse([]byte(captchaFail))
 	if !c.ChallengeFailed || c.Action != "CAPTCHA" {
 		t.Fatalf("captcha: %+v", c)
+	}
+}
+
+func TestParseCountOverriddenGroupDoesNotTerminate(t *testing.T) {
+	e, err := Parse([]byte(allowCountOverriddenGroup))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Rule != "Default_Action" || e.RuleGroup != "" {
+		t.Fatalf("Rule = %q, RuleGroup = %q, want Default_Action / empty", e.Rule, e.RuleGroup)
+	}
+	want := []string{"AWSManagedRulesCommonRuleSet/SizeRestrictions_BODY"}
+	if strings.Join(e.CountRules, ",") != strings.Join(want, ",") {
+		t.Fatalf("CountRules = %v, want %v", e.CountRules, want)
+	}
+}
+
+func TestParseGroupTerminatesAfterCountOverriddenGroup(t *testing.T) {
+	e, err := Parse([]byte(blockAfterCountOverriddenGroup))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Rule != "AWSManagedRulesSQLiRuleSet/SQLi_BODY" || e.RuleGroup != "AWSManagedRulesSQLiRuleSet" {
+		t.Fatalf("Rule = %q, RuleGroup = %q, want the last terminating group (SQLi)", e.Rule, e.RuleGroup)
+	}
+	want := []string{"AWSManagedRulesCommonRuleSet/SizeRestrictions_BODY"}
+	if strings.Join(e.CountRules, ",") != strings.Join(want, ",") {
+		t.Fatalf("CountRules = %v, want %v (the earlier, non-terminating group)", e.CountRules, want)
 	}
 }
 

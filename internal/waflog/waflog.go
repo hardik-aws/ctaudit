@@ -134,26 +134,46 @@ func Parse(line []byte) (Entry, error) {
 			e.Labels = append(e.Labels, l.Name)
 		}
 	}
-	for _, g := range r.RuleGroupList {
+	// A ruleGroupList entry carries a terminatingRule when its group would
+	// have blocked the request, even if the group's own override action
+	// (Count) let the request through some other way. That only becomes
+	// the request's Rule and RuleGroup when the top-level terminating rule
+	// actually came from a group, and then only the last such entry: an
+	// earlier group in the list can carry a would-block terminatingRule of
+	// its own (for example one overridden to Count) while a later group is
+	// what really terminated the request. Every other entry with a
+	// terminatingRule is recorded as a COUNT rule instead.
+	fromGroup := r.TerminatingRuleType == "GROUP" || r.TerminatingRuleType == "MANAGED_RULE_GROUP"
+	selected := -1
+	if fromGroup {
+		for i, g := range r.RuleGroupList {
+			if g.TerminatingRule != nil && g.TerminatingRule.RuleID != "" {
+				selected = i
+			}
+		}
+	}
+	for i, g := range r.RuleGroupList {
 		group := groupName(g.RuleGroupID)
-		if g.TerminatingRule != nil && g.TerminatingRule.RuleID != "" && e.RuleGroup == "" {
+		if i == selected {
 			e.RuleGroup = group
 			e.Rule = group + "/" + g.TerminatingRule.RuleID
+		} else if g.TerminatingRule != nil && g.TerminatingRule.RuleID != "" {
+			e.addCountRule(group + "/" + g.TerminatingRule.RuleID)
 		}
 		for _, nt := range g.NonTerminating {
 			if strings.EqualFold(nt.Action, "COUNT") {
-				e.CountRules = append(e.CountRules, group+"/"+nt.RuleID)
+				e.addCountRule(group + "/" + nt.RuleID)
 			}
 		}
 		for _, ex := range g.ExcludedRules {
 			if ex.RuleID != "" {
-				e.CountRules = append(e.CountRules, group+"/"+ex.RuleID)
+				e.addCountRule(group + "/" + ex.RuleID)
 			}
 		}
 	}
 	for _, nt := range r.NonTerminating {
 		if strings.EqualFold(nt.Action, "COUNT") {
-			e.CountRules = append(e.CountRules, nt.RuleID)
+			e.addCountRule(nt.RuleID)
 		}
 	}
 	if r.TerminatingRuleType == "RATE_BASED" {
@@ -161,6 +181,16 @@ func Parse(line []byte) (Entry, error) {
 	}
 	e.ChallengeFailed = failed(r.CaptchaResponse) || failed(r.ChallengeResponse)
 	return e, nil
+}
+
+// addCountRule appends r to CountRules unless it is already there.
+func (e *Entry) addCountRule(r string) {
+	for _, existing := range e.CountRules {
+		if existing == r {
+			return
+		}
+	}
+	e.CountRules = append(e.CountRules, r)
 }
 
 func failed(c *rawChallenge) bool {
