@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -54,6 +55,35 @@ func (s *S3Store) ListPage(ctx context.Context, prefix, token string) ([]string,
 		next = *out.NextContinuationToken
 	}
 	return keys, next, nil
+}
+
+// ListDirs lists the child prefixes under prefix with a "/" delimiter,
+// following every continuation token.
+func (s *S3Store) ListDirs(ctx context.Context, prefix string) ([]string, error) {
+	var out []string
+	var token *string
+	for {
+		res, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(s.bucket),
+			Prefix:            aws.String(prefix),
+			Delimiter:         aws.String("/"),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list s3://%s/%s: %w", s.bucket, prefix, err)
+		}
+		for _, cp := range res.CommonPrefixes {
+			if cp.Prefix != nil {
+				out = append(out, *cp.Prefix)
+			}
+		}
+		if res.IsTruncated == nil || !*res.IsTruncated || res.NextContinuationToken == nil {
+			break
+		}
+		token = res.NextContinuationToken
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Get opens one object for reading. The caller closes the returned reader.

@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // ObjectStore is the minimal read-only view of object storage that the audit
@@ -16,6 +17,10 @@ type ObjectStore interface {
 	// ListPage returns one page of keys under prefix. Pass an empty token for
 	// the first page; a non-empty returned token means more pages remain.
 	ListPage(ctx context.Context, prefix, token string) (keys []string, next string, err error)
+	// ListDirs returns the immediate child prefixes of prefix, each ending
+	// in "/", sorted. It is a delimiter listing, so it needs only
+	// s3:ListBucket and never walks the objects below each child.
+	ListDirs(ctx context.Context, prefix string) ([]string, error)
 	// Get opens the object at key. The caller closes the reader.
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
 }
@@ -63,6 +68,25 @@ func (m *MemStore) ListPage(_ context.Context, prefix, token string) ([]string, 
 		return rest[:m.PageSize], strconv.Itoa(offset + m.PageSize), nil
 	}
 	return rest, "", nil
+}
+
+// ListDirs returns the sorted child prefixes under prefix.
+func (m *MemStore) ListDirs(_ context.Context, prefix string) ([]string, error) {
+	seen := map[string]bool{}
+	for k := range m.objects {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		if i := strings.Index(k[len(prefix):], "/"); i >= 0 {
+			seen[k[:len(prefix)+i+1]] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Get returns the stored bytes for key.

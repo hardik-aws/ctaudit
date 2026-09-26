@@ -34,45 +34,61 @@ type Scope struct {
 // logs.
 const ServiceELB = "elasticloadbalancing"
 
-// Prefixes expands the scope into one S3 prefix per (account, region, day).
-// This is what lets the tool avoid ever listing the bucket root: each returned
-// prefix addresses at most a few dozen objects. Ordering is deterministic —
-// account, then region, then day ascending — so runs are reproducible.
-func (s Scope) Prefixes() []string {
-	if len(s.Accounts) == 0 || len(s.Regions) == 0 {
-		return nil
+// ServiceWAF is the path element under which AWS WAF delivers access logs.
+const ServiceWAF = "WAFLogs"
+
+// accountRoot returns "[<base>/]AWSLogs/[<org>/]<account>/".
+func (s Scope) accountRoot(account string) string {
+	var b strings.Builder
+	if base := strings.Trim(s.BasePrefix, "/"); base != "" {
+		b.WriteString(base)
+		b.WriteString("/")
 	}
+	b.WriteString("AWSLogs/")
+	if s.OrgID != "" {
+		b.WriteString(s.OrgID)
+		b.WriteString("/")
+	}
+	b.WriteString(account)
+	b.WriteString("/")
+	return b.String()
+}
+
+// days returns every UTC day from Start to End inclusive, or nil.
+func (s Scope) days() []time.Time {
 	start := s.Start.UTC().Truncate(24 * time.Hour)
 	end := s.End.UTC().Truncate(24 * time.Hour)
 	if end.Before(start) {
 		return nil
 	}
+	var out []time.Time
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		out = append(out, d)
+	}
+	return out
+}
 
-	days := int(end.Sub(start)/(24*time.Hour)) + 1
-	out := make([]string, 0, len(s.Accounts)*len(s.Regions)*days)
+// Prefixes expands the scope into one S3 prefix per (account, region, day).
+// This is what lets the tool avoid ever listing the bucket root: each returned
+// prefix addresses at most a few dozen objects. Ordering is deterministic —
+// account, then region, then day ascending — so runs are reproducible.
+func (s Scope) Prefixes() []string {
+	days := s.days()
+	if len(s.Accounts) == 0 || len(s.Regions) == 0 || len(days) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(s.Accounts)*len(s.Regions)*len(days))
 
 	service := s.Service
 	if service == "" {
 		service = "CloudTrail"
 	}
-	base := strings.Trim(s.BasePrefix, "/")
 	for _, account := range s.Accounts {
 		for _, region := range s.Regions {
-			for d := 0; d < days; d++ {
-				day := start.AddDate(0, 0, d)
-				var b strings.Builder
-				if base != "" {
-					b.WriteString(base)
-					b.WriteString("/")
-				}
-				b.WriteString("AWSLogs/")
-				if s.OrgID != "" {
-					b.WriteString(s.OrgID)
-					b.WriteString("/")
-				}
-				fmt.Fprintf(&b, "%s/%s/%s/%04d/%02d/%02d/",
-					account, service, region, day.Year(), int(day.Month()), day.Day())
-				out = append(out, b.String())
+			for _, day := range days {
+				out = append(out, fmt.Sprintf("%s%s/%s/%04d/%02d/%02d/",
+					s.accountRoot(account), service, region, day.Year(), int(day.Month()), day.Day()))
 			}
 		}
 	}
