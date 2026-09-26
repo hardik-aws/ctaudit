@@ -340,3 +340,210 @@ func TestWAFChallengeFailure(t *testing.T) {
 		t.Errorf("IPs[10.0.0.1].ChallengeFails = %d, want 1", ip.ChallengeFails)
 	}
 }
+
+func TestWAFExploitsMergeTwoSided(t *testing.T) {
+	t2 := time.Date(2026, 9, 19, 15, 0, 0, 0, time.UTC)
+	t3 := time.Date(2026, 9, 19, 13, 0, 0, 0, time.UTC)
+
+	// First summary: ALLOW with exploit match at t2
+	s1 := NewWAFSummary()
+	s1.Add(waflog.Entry{
+		Time:            t2,
+		WebACL:          "acl-1",
+		Action:          "ALLOW",
+		Rule:            "",
+		RuleType:        "",
+		RuleGroup:       "",
+		Source:          "source-1",
+		ClientIP:        "192.0.2.100",
+		Country:         "US",
+		Method:          "GET",
+		Host:            "example.com",
+		URI:             "/later",
+		UserAgent:       "test/1.0",
+		Labels:          []string{"awswaf:managed:aws:sql-database:"},
+		CountRules:      []string{},
+		RateRule:        "",
+		ResponseCode:    200,
+		Oversize:        false,
+		JA4:             "",
+		ChallengeFailed: false,
+	})
+
+	// Second summary: ALLOW with same exploit match at earlier time t3
+	s2 := NewWAFSummary()
+	s2.Add(waflog.Entry{
+		Time:            t3,
+		WebACL:          "acl-1",
+		Action:          "ALLOW",
+		Rule:            "",
+		RuleType:        "",
+		RuleGroup:       "",
+		Source:          "source-2",
+		ClientIP:        "192.0.2.100",
+		Country:         "US",
+		Method:          "POST",
+		Host:            "example.com",
+		URI:             "/earlier",
+		UserAgent:       "test/2.0",
+		Labels:          []string{"awswaf:managed:aws:sql-database:"},
+		CountRules:      []string{},
+		RateRule:        "",
+		ResponseCode:    200,
+		Oversize:        false,
+		JA4:             "",
+		ChallengeFailed: false,
+	})
+
+	// Merge s2 into s1
+	s1.Merge(s2)
+
+	// After merge, Exploits[192.0.2.100] should have:
+	// - First = t3 (earliest)
+	// - URI = "/earlier" (from earliest hit)
+	// - Count = 2 (both exploits)
+	exploit := s1.Exploits["192.0.2.100"]
+	if exploit == nil {
+		t.Fatal("Exploits[192.0.2.100] is nil")
+	}
+	if exploit.Count != 2 {
+		t.Errorf("Exploits[192.0.2.100].Count = %d, want 2", exploit.Count)
+	}
+	if !exploit.First.Equal(t3) {
+		t.Errorf("Exploits[192.0.2.100].First = %v, want %v (earliest)", exploit.First, t3)
+	}
+	if exploit.URI != "/earlier" {
+		t.Errorf("Exploits[192.0.2.100].URI = %q, want %q (from earliest hit)", exploit.URI, "/earlier")
+	}
+	if exploit.Matches["awswaf:managed:aws:sql-database:"] != 2 {
+		t.Errorf("Exploits[192.0.2.100].Matches[awswaf:managed:aws:sql-database:] = %d, want 2", exploit.Matches["awswaf:managed:aws:sql-database:"])
+	}
+}
+
+func TestWAFExploitsMergeIntoEmpty(t *testing.T) {
+	t1 := time.Date(2026, 9, 19, 14, 0, 0, 0, time.UTC)
+
+	// Empty summary
+	s1 := NewWAFSummary()
+
+	// Second summary with exploit
+	s2 := NewWAFSummary()
+	s2.Add(waflog.Entry{
+		Time:            t1,
+		WebACL:          "acl-1",
+		Action:          "ALLOW",
+		Rule:            "",
+		RuleType:        "",
+		RuleGroup:       "",
+		Source:          "source-1",
+		ClientIP:        "192.0.2.200",
+		Country:         "UK",
+		Method:          "GET",
+		Host:            "example.com",
+		URI:             "/test",
+		UserAgent:       "test/1.0",
+		Labels:          []string{"awswaf:managed:aws:known-bad-inputs:"},
+		CountRules:      []string{},
+		RateRule:        "",
+		ResponseCode:    200,
+		Oversize:        false,
+		JA4:             "",
+		ChallengeFailed: false,
+	})
+
+	// Merge s2 into empty s1
+	s1.Merge(s2)
+
+	// Exploits should now exist in s1
+	exploit := s1.Exploits["192.0.2.200"]
+	if exploit == nil {
+		t.Fatal("Exploits[192.0.2.200] is nil after merge into empty")
+	}
+	if exploit.Count != 1 {
+		t.Errorf("Exploits[192.0.2.200].Count = %d, want 1", exploit.Count)
+	}
+	if !exploit.First.Equal(t1) {
+		t.Errorf("Exploits[192.0.2.200].First = %v, want %v", exploit.First, t1)
+	}
+	if exploit.URI != "/test" {
+		t.Errorf("Exploits[192.0.2.200].URI = %q, want %q", exploit.URI, "/test")
+	}
+}
+
+func TestWAFIPsMergeTwoSided(t *testing.T) {
+	// First summary: IP with some stats
+	s1 := NewWAFSummary()
+	s1.Add(waflog.Entry{
+		Time:            time.Date(2026, 9, 19, 14, 0, 0, 0, time.UTC),
+		WebACL:          "acl-1",
+		Action:          "BLOCK",
+		Rule:            "rule-1",
+		RuleType:        "MANAGED",
+		RuleGroup:       "group-1",
+		Source:          "source-1",
+		ClientIP:        "203.0.113.50",
+		Country:         "US",
+		Method:          "POST",
+		Host:            "example.com",
+		URI:             "/test",
+		UserAgent:       "test/1.0",
+		Labels:          []string{},
+		CountRules:      []string{},
+		RateRule:        "rate-1",
+		ResponseCode:    403,
+		Oversize:        false,
+		JA4:             "",
+		ChallengeFailed: true,
+	})
+
+	// Second summary: same IP with different stats
+	s2 := NewWAFSummary()
+	s2.Add(waflog.Entry{
+		Time:            time.Date(2026, 9, 19, 15, 0, 0, 0, time.UTC),
+		WebACL:          "acl-2",
+		Action:          "ALLOW",
+		Rule:            "",
+		RuleType:        "",
+		RuleGroup:       "",
+		Source:          "source-2",
+		ClientIP:        "203.0.113.50",
+		Country:         "US",
+		Method:          "GET",
+		Host:            "example.com",
+		URI:             "/api",
+		UserAgent:       "test/2.0",
+		Labels:          []string{},
+		CountRules:      []string{},
+		RateRule:        "rate-1",
+		ResponseCode:    200,
+		Oversize:        false,
+		JA4:             "",
+		ChallengeFailed: false,
+	})
+
+	// Merge s2 into s1
+	s1.Merge(s2)
+
+	// Check merged IP stats
+	ip := s1.IPs["203.0.113.50"]
+	if ip == nil {
+		t.Fatal("IPs[203.0.113.50] is nil")
+	}
+	if ip.Blocks != 1 {
+		t.Errorf("IPs[203.0.113.50].Blocks = %d, want 1", ip.Blocks)
+	}
+	if ip.Allows != 1 {
+		t.Errorf("IPs[203.0.113.50].Allows = %d, want 1", ip.Allows)
+	}
+	if ip.RateLimited != 2 {
+		t.Errorf("IPs[203.0.113.50].RateLimited = %d, want 2 (both rate-limited)", ip.RateLimited)
+	}
+	if ip.ChallengeFails != 1 {
+		t.Errorf("IPs[203.0.113.50].ChallengeFails = %d, want 1", ip.ChallengeFails)
+	}
+
+	// Check RateByRule merge
+	if s1.RateByRule["rate-1"]["203.0.113.50"] != 2 {
+		t.Errorf("RateByRule[rate-1][203.0.113.50] = %d, want 2", s1.RateByRule["rate-1"]["203.0.113.50"])
+	}
+}
