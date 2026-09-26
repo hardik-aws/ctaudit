@@ -1,6 +1,7 @@
 /ctaudit
 /ctaudit-report.html
 /elb-report.html
+/waf-report.html
 /*.pdf
 **/.terraform/
 **/.terraform.lock.hcl

@@ -1,10 +1,11 @@
 # ctaudit
 
-`ctaudit` reads AWS logs straight from S3 and prints a report, then writes the same report to a single self-contained HTML file. It has two commands:
+`ctaudit` reads AWS logs straight from S3 and prints a report, then writes the same report to a single self-contained HTML file. It has three commands:
 
 - `ctaudit cloudtrail` reads gzipped CloudTrail logs and reports security findings, forensic matches, and API volume.
 - `ctaudit elb` (alias `ctaudit alb`) reads Elastic Load Balancing access logs from Application, Network, and Classic Load Balancers. It reports traffic, latency, status codes, clients, targets, and TLS usage, and lists the individual requests that match forensic filters.
-- `ctaudit serve cloudtrail|elb` runs either one as a long-running scanner with Prometheus metrics, for Kubernetes. See [Running on Kubernetes](#running-on-kubernetes).
+- `ctaudit waf` reads AWS WAF traffic logs and reports request volume by action, blocking and rate-limit findings, and the terminating rules, clients, and requests behind them.
+- `ctaudit serve cloudtrail|elb|waf` runs any of the three as a long-running scanner with Prometheus metrics, for Kubernetes. See [Running on Kubernetes](#running-on-kubernetes).
 
 The command is required. Running `ctaudit` alone prints usage and exits 2. It uses no AWS Glue, no Athena, and no other query service. Everything runs in-process against objects read from the log bucket.
 
@@ -167,13 +168,63 @@ Load balancers write one object per five-minute interval and file it under the d
 
 `ctaudit elb` has no security findings and no `--fail-on`. It exits 0 on a complete scan and 2 on failure.
 
+## AWS WAF
+
+```bash
+./ctaudit waf --bucket aws-waf-logs-example --bucket-region us-east-1 \
+  --accounts 111122223333 --regions us-east-1,cloudfront --since 2026-09-23 --until 2026-09-23 \
+  --html waf-report.html
+```
+
+WAF traffic logs are delivered straight to S3, not through CloudTrail: `ctaudit waf` reads every object under `[<prefix>/]AWSLogs/[<org-id>/]<account>/WAFLogs/<region>/<web-acl>/YYYY/MM/DD/HH/mm/`, one gzipped JSON object per request-per-minute file. Because the web ACL name sits before the date in the key, `ctaudit` first lists the web ACLs under each account and region, then scans their day prefixes; `--web-acls` narrows which ACLs are scanned. A CloudFront web ACL logs under the region element `cloudfront`, so scanning one needs `--regions cloudfront` (alongside any regional web ACLs' own regions). This prints the terminal summary and writes `waf-report.html`.
+
+The report contains request volume by action (ALLOW, BLOCK, COUNT, CAPTCHA, CHALLENGE) and block rate; ranked tables for web ACLs, terminating rules, rule groups, client IPs, blocked client IPs, countries, blocked countries, hosts, normalized URIs, methods, user agents, inspection source, labels, COUNT-mode rules, JA4 fingerprints, and response codes; requests by hour (UTC); the security findings below; and, in the HTML report, a requests table with every kept field, capped at `--max-events`.
+
+Only the `Host` and `User-Agent` headers are kept from each request; every other header, the query string (`args`), and any body are dropped at decode time and never reach a report or a sink.
+
+### WAF flags
+
+`--bucket`, `--accounts`, `--regions`, `--prefix`, `--since`, `--until`, `--top`, `--list-workers`, `--fetch-workers`, `--profile`, `--bucket-region`, `--debug`, and `--log-format` work as they do for CloudTrail. `--prefix` is the key prefix WAF writes under, before `AWSLogs/`.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--org-id` | | AWS Organizations ID for an organization trail, e.g. `o-abc123` |
+| `--web-acls` | | Comma-separated web ACL names; a log is scanned if its name contains any of them |
+| `--action` | | Comma-separated actions: `ALLOW`, `BLOCK`, `COUNT`, `CAPTCHA`, `CHALLENGE` |
+| `--client-ip` | | Client IP contains this text |
+| `--country` | | Comma-separated two-letter country codes |
+| `--rule` | | Terminating rule contains this text (case-insensitive) |
+| `--uri` | | URI contains this text (case-insensitive) |
+| `--host` | | Host header contains this text (case-insensitive) |
+| `--block-threshold` | 100 | Block count at which a client IP becomes a finding |
+| `--fail-on` | `critical` | Exit 1 when a finding is at or above `none`, `low`, `medium`, `high`, or `critical` |
+| `--html` | `waf-report.html` | HTML report path. `""` skips it. Must not end in `.txt` |
+| `--pdf` | | Also write a printable PDF report to this path. Must end in `.pdf` |
+| `--max-events` | 200 | Matching requests kept for the requests table |
+
+WAF files each object under the day and hour it was delivered, so requests from just before midnight on `--until` can land in the next day's prefix. Like the CloudTrail and ELB commands, `ctaudit waf` scans one extra day of prefixes and filters back to the exact window.
+
+### WAF findings
+
+| Rule | Severity | Fires on |
+|---|---|---|
+| `waf-exploit-allowed` | CRITICAL | A client IP had allowed requests that matched a COUNT-mode exploit rule (SQLi, XSS, and similar managed rules) |
+| `waf-attacker-allowed` | HIGH | A client IP passed `--block-threshold` blocked requests and also had at least one allowed request |
+| `waf-rate-limited` | HIGH | A RATE_BASED rule limited requests, reported per rule with its top client IPs |
+| `waf-persistent-blocked-ip` | MEDIUM | A client IP passed `--block-threshold` blocked requests with no allowed requests |
+| `waf-count-rule` | MEDIUM | A rule in COUNT mode matched requests; it would block them if switched to BLOCK |
+| `waf-oversize` | MEDIUM | Requests had a body, headers, or cookies larger than WAF inspects (`oversizeFields`) |
+| `waf-challenge-failures` | LOW | A client IP failed at least a tenth of `--block-threshold` CAPTCHA or challenge responses |
+
+`ctaudit waf` exits 1 when a finding is at or above `--fail-on` (default `critical`), 0 on a clean scan, and 2 on failure, the same as `cloudtrail`.
+
 ## PDF report
 
-Both subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the ELB health values, timeline charts, target group and slowest path tables, the hourly chart, the ranked tables, and, for CloudTrail, every finding the report kept. It leaves out the matching requests, connections, and events tables; use the HTML report for those. A PDF write failure exits 2.
+All three subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the ELB health values or WAF action totals, timeline charts, target group and slowest path tables or WAF ranked tables, the hourly chart, and, for CloudTrail and WAF, every finding the report kept. It leaves out the matching requests, connections, and events tables; use the HTML report for those. A PDF write failure exits 2.
 
 ## Prometheus and Loki
 
-Both subcommands can push their results into an existing Prometheus and Grafana stack. The one-shot commands listen on no port: ctaudit pushes run metrics to a Prometheus Pushgateway and streams every matching record to the Loki push API, then exits. Both outputs are off unless you set their flags.
+All three subcommands can push their results into an existing Prometheus and Grafana stack. The one-shot commands listen on no port: ctaudit pushes run metrics to a Prometheus Pushgateway and streams every matching record to the Loki push API, then exits. Both outputs are off unless you set their flags.
 
 | Flag | Meaning |
 |---|---|
@@ -200,28 +251,30 @@ CTAUDIT_LOKI_TOKEN=... ./ctaudit cloudtrail --bucket org-trail --accounts 111122
   --loki http://loki-gateway.monitoring --loki-tenant security
 ```
 
-**Loki.** Every record that passes the filters is sent, uncapped by `--max-events`, and for `cloudtrail` every finding follows at the end. Labels stay low-cardinality: `job`, `subcommand`, `kind` (`event`, `finding`, `request`, or `conn`), plus `account` and `region` on CloudTrail events, `severity` and `account` on findings, and `lb` on ELB lines. Each line is a JSON object with `kind`, `run_id`, and the record's fields. CloudTrail events keep CloudTrail's field names; findings and ELB lines use snake_case. The line always carries the record time (`event_time` or CloudTrail's `eventTime`). With `--loki-time scan` each entry is stamped with the scan time, so Loki accepts any window. With `--loki-time event` each entry is stamped with its record time, so Grafana's time picker and over-time charts follow request and event times. Loki accepts a stream's entries only in order, within an out-of-order window of half `max_chunk_age` (1 hour by default), and refuses entries older than `reject_old_samples_max_age` (7 days by default). So in event mode ctaudit holds every line until the scan ends (at most 2,000,000; past that the run fails and asks for `--loki-time scan` or a shorter window), sorts each stream oldest first, and pushes one batch at a time. When Loki still refuses entries for their age, it keeps the rest of the push; ctaudit prints a warning with the count instead of failing, because a retry cannot make an entry younger. Keep event-mode windows inside the 7-day limit, or raise it in Loki. CloudTrail lines over 128 KiB drop `requestParameters`, `responseElements`, and `additionalEventData` and carry `"truncated": true`.
+**Loki.** Every record that passes the filters is sent, uncapped by `--max-events`, and for `cloudtrail` and `waf` every finding follows at the end. Labels stay low-cardinality: `job`, `subcommand`, `kind` (`event`, `finding`, `request`, or `conn`), plus `account` and `region` on CloudTrail events, `severity` and `account` on findings, `lb` on ELB lines, and `acl` and `action` on WAF lines. Each line is a JSON object with `kind`, `run_id`, and the record's fields. CloudTrail events keep CloudTrail's field names; findings, ELB lines, and WAF lines use snake_case. The line always carries the record time (`event_time` or CloudTrail's `eventTime`). With `--loki-time scan` each entry is stamped with the scan time, so Loki accepts any window. With `--loki-time event` each entry is stamped with its record time, so Grafana's time picker and over-time charts follow request and event times. Loki accepts a stream's entries only in order, within an out-of-order window of half `max_chunk_age` (1 hour by default), and refuses entries older than `reject_old_samples_max_age` (7 days by default). So in event mode ctaudit holds every line until the scan ends (at most 2,000,000; past that the run fails and asks for `--loki-time scan` or a shorter window), sorts each stream oldest first, and pushes one batch at a time. When Loki still refuses entries for their age, it keeps the rest of the push; ctaudit prints a warning with the count instead of failing, because a retry cannot make an entry younger. Keep event-mode windows inside the 7-day limit, or raise it in Loki. CloudTrail lines over 128 KiB drop `requestParameters`, `responseElements`, and `additionalEventData` and carry `"truncated": true`.
 
 ```logql
 {job="ctaudit", kind="finding", severity="critical"} | json | line_format "{{.rule}} {{.actor}} {{.title}}"
 {job="ctaudit", subcommand="elb", kind="request"} | json | elb_status =~ "5.." | line_format "{{.client_ip}} {{.method}} {{.url}}"
+{job="ctaudit", subcommand="waf", kind="request"} | json | action = "BLOCK" | line_format "{{.client_ip}} {{.rule}} {{.uri}}"
 {job="ctaudit", kind="event"} | json | userIdentity_type = "Root"
 ```
 
-**Pushgateway.** Metrics are pushed once per run to `/metrics/job/<job>/subcommand/<cloudtrail|elb>`, so the two subcommands never overwrite each other. Every run sends `ctaudit_objects_scanned`, `ctaudit_records_read`, `ctaudit_records_matched`, `ctaudit_scan_errors`, `ctaudit_scan_duration_seconds`, and `ctaudit_last_run_timestamp_seconds`. `ctaudit_last_success_timestamp_seconds` is sent only when the scan had no errors and the Loki and JSONL output worked, so an earlier success stays in place after a failed run. `cloudtrail` adds `ctaudit_findings{severity}`, `ctaudit_findings_dropped`, `ctaudit_cloudtrail_write_events`, and `ctaudit_cloudtrail_error_events`. `elb` adds `ctaudit_elb_requests{status_class}`, byte and latency gauges, and TLS connection gauges. Labeled families always carry every label value, with zeros, so no stale series survive.
+**Pushgateway.** Metrics are pushed once per run to `/metrics/job/<job>/subcommand/<cloudtrail|elb|waf>`, so the subcommands never overwrite each other. Every run sends `ctaudit_objects_scanned`, `ctaudit_records_read`, `ctaudit_records_matched`, `ctaudit_scan_errors`, `ctaudit_scan_duration_seconds`, and `ctaudit_last_run_timestamp_seconds`. `ctaudit_last_success_timestamp_seconds` is sent only when the scan had no errors and the Loki and JSONL output worked, so an earlier success stays in place after a failed run. `cloudtrail` adds `ctaudit_findings{severity}`, `ctaudit_findings_dropped`, `ctaudit_cloudtrail_write_events`, and `ctaudit_cloudtrail_error_events`. `elb` adds `ctaudit_elb_requests{status_class}`, byte and latency gauges, and TLS connection gauges. `waf` adds `ctaudit_waf_requests{action}` and `ctaudit_findings{severity}`. Labeled families always carry every label value, with zeros, so no stale series survive.
 
 A bad URL, job name, or credential variable exits 2 before any S3 call. A failed Loki or Pushgateway push also exits 2, after the reports are written. `docs/grafana/` holds an example dashboard and Prometheus alert rules.
 
-**Report dashboards.** [`deploy/helm/ctaudit/dashboards/`](deploy/helm/ctaudit/dashboards) holds two Grafana dashboards that rebuild the HTML reports from the Loki lines alone, with no Prometheus needed:
+**Report dashboards.** [`deploy/helm/ctaudit/dashboards/`](deploy/helm/ctaudit/dashboards) holds three Grafana dashboards that rebuild the HTML reports from the Loki lines alone, with no Prometheus needed:
 
 - `ctaudit-elb-report.json` (uid `ctaudit-elb-report`) shows each piece of information once. The Traffic row has the request, byte, 4xx, 5xx, latency, and load balancer totals. A Health row has gauges for the average target response time (orange from 0.5 s, red from 1 s), the 5xx rate (1% and 5%), and target connection errors, and a count of targets that returned a 5xx. A Timeline row charts requests by ELB status class, target responses with connection errors, latency with dashed 0.5 s and 1 s guides, and the average latency of the five slowest paths, with pies for load balancer, method, and listener type. A Target groups and timing row has one table per target group (requests, target 2xx, 4xx, and 5xx, ELB 5xx, connection errors, targets, and average and maximum target time) and the slowest paths. A Failing requests section, driven by the `Failing status` variable (4xx and 5xx, 5xx only, or 4xx only), shows the failing count and share, failing requests by status over time, by path, client IP, target, error reason, and load balancer, and the failing request lines with their error reason and trace ID. The Requests row has the remaining request tables (ELB and target status, client IPs, hosts, normalized paths, user agents, targets, action, TLS protocol and cipher, classifications). The TLS connections row has the connection totals and tables that the request log does not carry: connections per load balancer, listener and TLS, key exchange, verify status, failed 443 handshakes by client IP, and incoming TLS alerts. It ends with the matching requests and connections as rows.
 - `ctaudit-cloudtrail-report.json` (uid `ctaudit-cloudtrail-report`) shows the event, write, and error totals and the findings by severity, rule, actor, and account. Events by account is a chart whose legend carries each account's total. It has the principal, event name, service, error code, source IP, region, and identity type tables, and the matching findings and events as rows.
+- `ctaudit-waf-report.json` (uid `ctaudit-waf-report`) has a Summary row with the request, blocked, allowed, counted, challenged, and block rate stats, the web ACL count, and requests by action over time. A Findings row lists the security findings by time, severity, rule, title, actor, and detail. A Blocking row, filtered to non-ALLOW actions where noted, has terminating rules, rule groups, the top blocked client IPs, blocked countries, and a pie of actions by inspection source. A Clients row has the top client IPs, countries, JA4 fingerprints, and user agents. A Requests row has hosts, normalized URIs, methods, and response codes. It ends with the matching requests as rows.
 
-Both take a `loki` data source variable and filter on job, load balancer or account and region, and regular expressions for client IP and ELB status, or principal and event name. `Top N` sets the table length. Every panel has a description, shown by its (i) icon, that says what it counts. The counts use the same rules as the HTML report: the principal is the ARN, else `invokedBy`, else `userName`, else `principalId`; numeric path segments become `{n}`; a write event is `readOnly=false`, or a missing `readOnly` and an event name that is not a read verb. Two limits apply. The time picker selects Loki timestamps: request and event times for lines shipped with `--loki-time event` (the `serve` default), but scan runs for lines shipped with the one-shot default `--loki-time scan`, whose over-time charts show when lines were shipped. Event-time lines carry no scan time, so shipping the same window twice in event mode doubles every count; give a re-run its own `--push-job`. Tables that group by a high-cardinality field, such as client IP on a busy load balancer, can reach Loki's `max_query_series` limit (500 by default); lower `Top N` does not help there, so narrow the filters or the time range. Import the files in Grafana, or set `grafanaDashboards.enabled: true` in the chart to ship them as a ConfigMap for the Grafana dashboard sidecar.
+All three take a `loki` data source variable and filter on job, load balancer, web ACL, or account and region, and regular expressions for client IP and ELB status, or action, or principal and event name. `Top N` sets the table length. Every panel has a description, shown by its (i) icon, that says what it counts. The counts use the same rules as the HTML report: the principal is the ARN, else `invokedBy`, else `userName`, else `principalId`; numeric path segments become `{n}`; a write event is `readOnly=false`, or a missing `readOnly` and an event name that is not a read verb. Two limits apply. The time picker selects Loki timestamps: request and event times for lines shipped with `--loki-time event` (the `serve` default), but scan runs for lines shipped with the one-shot default `--loki-time scan`, whose over-time charts show when lines were shipped. Event-time lines carry no scan time, so shipping the same window twice in event mode doubles every count; give a re-run its own `--push-job`. Tables that group by a high-cardinality field, such as client IP on a busy load balancer, can reach Loki's `max_query_series` limit (500 by default); lower `Top N` does not help there, so narrow the filters or the time range. Import the files in Grafana, or set `grafanaDashboards.enabled: true` in the chart to ship them as a ConfigMap for the Grafana dashboard sidecar.
 
 ## Debug logging
 
-`--debug`, or `CTAUDIT_DEBUG=1` in the environment, makes `cloudtrail`, `elb`, and `serve` log what they do to stderr. The reports on stdout and in files are unchanged. `--log-format json` writes one JSON object per line for log collectors; the default is `text` (`key=value`).
+`--debug`, or `CTAUDIT_DEBUG=1` in the environment, makes `cloudtrail`, `elb`, `waf`, and `serve` log what they do to stderr. The reports on stdout and in files are unchanged. `--log-format json` writes one JSON object per line for log collectors; the default is `text` (`key=value`).
 
 The log shows:
 
@@ -239,12 +292,13 @@ It never logs credentials, request headers, or record contents, and URLs have an
 
 ## Running on Kubernetes
 
-`ctaudit serve` turns either subcommand into a long-running scanner for Kubernetes. It rescans a rolling window on a fixed interval, keeps running totals as Prometheus counters on `/metrics`, and streams new matches to Loki. The Helm chart in [`deploy/helm/ctaudit`](deploy/helm/ctaudit) runs one pod per scanner.
+`ctaudit serve` turns any of the three subcommands into a long-running scanner for Kubernetes. It rescans a rolling window on a fixed interval, keeps running totals as Prometheus counters on `/metrics`, and streams new matches to Loki. The Helm chart in [`deploy/helm/ctaudit`](deploy/helm/ctaudit) runs one pod per scanner.
 
 ```bash
 ./ctaudit serve cloudtrail --bucket org-trail --accounts 111122223333 --regions us-east-1 \
   --interval 15m --lookback 24h --loki http://loki-gateway.monitoring
 ./ctaudit serve elb --bucket alb-logs --accounts 111122223333 --regions us-east-1 --lb tiles
+./ctaudit serve waf --bucket aws-waf-logs-example --accounts 111122223333 --regions us-east-1,cloudfront
 ```
 
 `serve` takes every flag of the named subcommand plus three of its own:
@@ -265,7 +319,7 @@ It never logs credentials, request headers, or record contents, and URLs have an
 
 | Path | Response |
 |---|---|
-| `/metrics` | Prometheus text: `ctaudit_scans_total{result}` (`ok`, `partial`, `failed`), object, record, and error counters, `ctaudit_findings_total{severity}`, `ctaudit_elb_requests_total{status_class}`, latency and TLS counters, `ctaudit_last_success_timestamp_seconds`, and `ctaudit_seen_keys`. Every family has a `subcommand` label. |
+| `/metrics` | Prometheus text: `ctaudit_scans_total{result}` (`ok`, `partial`, `failed`), object, record, and error counters, `ctaudit_findings_total{severity}`, `ctaudit_elb_requests_total{status_class}`, latency and TLS counters, `ctaudit_waf_requests_total{action}`, `ctaudit_waf_findings_total{severity}`, `ctaudit_last_success_timestamp_seconds`, and `ctaudit_seen_keys`. Every family has a `subcommand` label. |
 | `/report` | The usual self-contained HTML report for the whole window, merged from every scan in it. 503 until the first scan commits. |
 | `/healthz` | `ok` while the process runs. It is not tied to scan success: a failing scan raises an alert, not a restart. |
 
@@ -365,7 +419,7 @@ Set `debug: true` to pass `--debug` to every scanner, and `logFormat: json` to p
 
 [`deploy/terraform/example`](deploy/terraform/example) is an example Terraform root module that creates the IRSA role and reader policies and installs the chart with the role ARN passed in.
 
-The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `grafanaDashboards.enabled: true` adds a ConfigMap labeled `grafana_dashboard: "1"` that carries the two report dashboards; set `grafanaDashboards.namespace` when the Grafana sidecar watches a different namespace, and `grafanaDashboards.annotations` for a folder, for example `grafana_folder: Security`. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
+The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `grafanaDashboards.enabled: true` adds a ConfigMap labeled `grafana_dashboard: "1"` that carries the three report dashboards; set `grafanaDashboards.namespace` when the Grafana sidecar watches a different namespace, and `grafanaDashboards.annotations` for a folder, for example `grafana_folder: Security`. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
 
 ## Exit codes
 
@@ -379,7 +433,7 @@ Unreadable objects return 2 even when findings exist, because the report may be 
 
 ## IAM
 
-`ctaudit` is read-only. It needs `s3:ListBucket` on the log bucket (restricted to the `AWSLogs/` prefix) and `s3:GetObject` on the log objects. It also needs `kms:Decrypt` when the trail uses SSE-KMS. The `elb` command needs the same two S3 permissions on the access log bucket. ELB access logs support only SSE-S3 encryption, so it never needs KMS. It never writes to the bucket or changes any AWS resource.
+`ctaudit` is read-only. It needs `s3:ListBucket` on the log bucket (restricted to the `AWSLogs/` prefix) and `s3:GetObject` on the log objects. It also needs `kms:Decrypt` when the trail uses SSE-KMS. The `elb` command needs the same two S3 permissions on the access log bucket. ELB access logs support only SSE-S3 encryption, so it never needs KMS. The `waf` command needs the same `s3:ListBucket` and `s3:GetObject` on the WAF log bucket; the reader policy must include that bucket too, and no extra permission is needed for the delimiter listing `ctaudit waf` uses to discover web ACL names. It never writes to the bucket or changes any AWS resource.
 
 The Terraform module in [`iam/cloudtrail-audit-reader`](iam/cloudtrail-audit-reader) creates that policy. Point `log_bucket_name` at the access log bucket to use it for `ctaudit elb`:
 
