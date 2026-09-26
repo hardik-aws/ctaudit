@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,6 +109,30 @@ func TestRunWAFExitsTwoOnUnreadableObject(t *testing.T) {
 	}
 	if code, stdout, _ := runWAFArgs(t, corrupt, "--html", ""); code != exitFailed || !strings.Contains(stdout, "ERRORS (1)") {
 		t.Errorf("unreadable object: exit = %d, want %d with the error listed\n%s", code, exitFailed, stdout)
+	}
+}
+
+// listDirsErrStore wraps a MemStore whose ListDirs always fails, as a
+// ListBucket denial or an S3 outage would, so web ACL discovery aborts the
+// scan instead of silently shrinking it.
+type listDirsErrStore struct {
+	*s3src.MemStore
+}
+
+func (listDirsErrStore) ListDirs(context.Context, string) ([]string, error) {
+	return nil, errors.New("simulated ListBucket failure")
+}
+
+func TestRunWAFExitsTwoOnListDirsError(t *testing.T) {
+	broken := func(context.Context, storeConfig) (s3src.ObjectStore, error) {
+		return listDirsErrStore{s3src.NewMemStore(map[string][]byte{testWAFKey: nil})}, nil
+	}
+	code, _, stderr := runWAFArgs(t, broken, "--html", "")
+	if code != exitFailed {
+		t.Errorf("exit = %d, want %d; stderr = %s", code, exitFailed, stderr)
+	}
+	if !strings.Contains(stderr, "simulated ListBucket failure") {
+		t.Errorf("stderr missing the ListDirs error: %s", stderr)
 	}
 }
 

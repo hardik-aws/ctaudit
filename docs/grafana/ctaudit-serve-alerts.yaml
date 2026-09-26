@@ -26,6 +26,25 @@ groups:
           summary: "HIGH CloudTrail finding from {{ $labels.pod }}"
           description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
 
+      - alert: CtauditWAFCriticalFinding
+        expr: increase(ctaudit_waf_findings_total{job=~".*ctaudit.*",severity="critical"}[30m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL WAF finding from {{ $labels.pod }}"
+          description: >-
+            {{ $value | humanize }} critical rule hits in the last 30 minutes.
+            Open /report on the scanner or query Loki with
+            {kind="finding", severity="critical"} | json.
+
+      - alert: CtauditWAFHighFinding
+        expr: increase(ctaudit_waf_findings_total{job=~".*ctaudit.*",severity="high"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "HIGH WAF finding from {{ $labels.pod }}"
+          description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
+
       - alert: CtauditScanErrors
         expr: increase(ctaudit_scan_errors_total{job=~".*ctaudit.*"}[1h]) > 0
         labels:

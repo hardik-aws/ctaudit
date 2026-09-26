@@ -281,7 +281,7 @@ func wafMetrics(res engine.WAFResult) func(*sink.Metrics) {
 		}
 		for _, a := range wafActions {
 			m.GaugeWith("ctaudit_waf_requests", "Matching requests in the last run, by action.",
-				"action", strings.ToLower(a), float64(actions[a]))
+				"action", a, float64(actions[a]))
 		}
 		counts := map[findings.Severity]int{}
 		for _, f := range res.Findings {

@@ -176,7 +176,7 @@ Load balancers write one object per five-minute interval and file it under the d
   --html waf-report.html
 ```
 
-WAF traffic logs are delivered straight to S3, not through CloudTrail: `ctaudit waf` reads every object under `[<prefix>/]AWSLogs/[<org-id>/]<account>/WAFLogs/<region>/<web-acl>/YYYY/MM/DD/HH/mm/`, one gzipped JSON object per request-per-minute file. Because the web ACL name sits before the date in the key, `ctaudit` first lists the web ACLs under each account and region, then scans their day prefixes; `--web-acls` narrows which ACLs are scanned. A CloudFront web ACL logs under the region element `cloudfront`, so scanning one needs `--regions cloudfront` (alongside any regional web ACLs' own regions). This prints the terminal summary and writes `waf-report.html`.
+WAF traffic logs are delivered straight to S3, not through CloudTrail: `ctaudit waf` reads every object under `[<prefix>/]AWSLogs/[<org-id>/]<account>/WAFLogs/<region>/<web-acl>/YYYY/MM/DD/HH/mm/`. WAF delivers a gzipped file roughly every 5 minutes, one JSON record per line. Because the web ACL name sits before the date in the key, `ctaudit` first lists the web ACLs under each account and region, then scans their day prefixes; `--web-acls` narrows which ACLs are scanned. A CloudFront web ACL logs under the region element `cloudfront`, so scanning one needs `--regions cloudfront` (alongside any regional web ACLs' own regions). This prints the terminal summary and writes `waf-report.html`.
 
 The report contains request volume by action (ALLOW, BLOCK, COUNT, CAPTCHA, CHALLENGE) and block rate; ranked tables for web ACLs, terminating rules, rule groups, client IPs, blocked client IPs, countries, blocked countries, hosts, normalized URIs, methods, user agents, inspection source, labels, COUNT-mode rules, JA4 fingerprints, and response codes; requests by hour (UTC); the security findings below; and, in the HTML report, a requests table with every kept field, capped at `--max-events`.
 
@@ -188,7 +188,7 @@ Only the `Host` and `User-Agent` headers are kept from each request; every other
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--org-id` | | AWS Organizations ID for an organization trail, e.g. `o-abc123` |
+| `--org-id` | | AWS Organizations ID segment in the key, e.g. `o-abc123`, when logs are delivered under an organization |
 | `--web-acls` | | Comma-separated web ACL names; a log is scanned if its name contains any of them |
 | `--action` | | Comma-separated actions: `ALLOW`, `BLOCK`, `COUNT`, `CAPTCHA`, `CHALLENGE` |
 | `--client-ip` | | Client IP contains this text |
@@ -215,6 +215,8 @@ WAF files each object under the day and hour it was delivered, so requests from 
 | `waf-count-rule` | MEDIUM | A rule in COUNT mode matched requests; it would block them if switched to BLOCK |
 | `waf-oversize` | MEDIUM | Requests had a body, headers, or cookies larger than WAF inspects (`oversizeFields`) |
 | `waf-challenge-failures` | LOW | A client IP failed at least a tenth of `--block-threshold` CAPTCHA or challenge responses |
+
+`waf-challenge-failures` counts `TOKEN_MISSING` responses too: WAF logs that response on every first CAPTCHA or challenge presentation, before the client has a chance to solve it, so a normal challenge flow always produces at least one.
 
 `ctaudit waf` exits 1 when a finding is at or above `--fail-on` (default `critical`), 0 on a clean scan, and 2 on failure, the same as `cloudtrail`.
 
@@ -325,6 +327,8 @@ It never logs credentials, request headers, or record contents, and URLs have an
 
 SIGTERM stops the running scan, flushes Loki, and exits 0 after at most 10 seconds.
 
+**Findings are per tick, not per window.** `serve cloudtrail` and `serve waf` run the findings rules (and, for WAF, `--block-threshold`) once per tick, over only the records that tick newly saw, and `ctaudit_findings_total` / `ctaudit_waf_findings_total` add up those per-tick results. A client IP that is blocked 60 times in one tick and 60 more in the next never crosses a `--block-threshold` of 100 in either tick's own findings, even though it would in a one-shot scan of the same window. `/report`, by contrast, re-evaluates the rules once over every record from every merged tick still in the lookback, so its findings and severity can differ from what `/metrics` counted as ticks happened.
+
 ### Image
 
 `make image` builds a static binary into `gcr.io/distroless/static-debian12:nonroot`, which runs as UID 65532. Set `IMAGE` and `TAG` to your registry, then push it yourself:
@@ -425,8 +429,8 @@ The pods run as non-root with a read-only root filesystem, drop every capability
 
 | Code | Meaning |
 |---|---|
-| 0 | Scan completed; for `cloudtrail`, no findings at or above `--fail-on` |
-| 1 | `cloudtrail` only: scan completed; findings at or above `--fail-on` exist |
+| 0 | Scan completed; for `cloudtrail` and `waf`, no findings at or above `--fail-on` |
+| 1 | `cloudtrail` and `waf` only: scan completed; findings at or above `--fail-on` exist |
 | 2 | Scan failed: missing command, bad flags, AWS error, unreadable objects, or a failed Loki or Pushgateway push |
 
 Unreadable objects return 2 even when findings exist, because the report may be incomplete. A CI gate must not pass on a partial scan.

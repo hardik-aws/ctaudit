@@ -277,7 +277,7 @@ func (s *serveState) metrics() *sink.Metrics {
 			with("ctaudit_waf_requests_total", "Matching requests by WAF action.", "action", a, float64(tot.wafByAction[a]))
 		}
 		for _, sev := range severities {
-			with("ctaudit_waf_findings_total", "Rule hits by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
+			with("ctaudit_waf_findings_total", "WAF findings raised per scan tick, by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
 		}
 	}
 

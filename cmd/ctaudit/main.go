@@ -44,7 +44,7 @@ Commands:
   cloudtrail   scan CloudTrail logs for security findings and API activity
   elb          scan Elastic Load Balancing access logs (alias: alb)
   waf          scan AWS WAF logs
-  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb)
+  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb|waf)
 
 Run "ctaudit <command> -h" for the flags of a command.
 `

@@ -455,6 +455,20 @@ func TestServeWAFTickCommitsAndMetrics(t *testing.T) {
 	}
 }
 
+func TestServeWAFTickFailsOnListDirsError(t *testing.T) {
+	store := listDirsErrStore{s3src.NewMemStore(map[string][]byte{testWAFKey: nil})}
+	clock := &fakeClock{t: serveNow}
+	s, stderr := newTestWAFServer(t, store, clock)
+
+	s.tick(context.Background())
+	if n := len(s.state.snapshot()); n != 0 {
+		t.Errorf("committed ticks after a failed tick = %d, want 0", n)
+	}
+	if !strings.Contains(stderr.String(), "waf tick failed") {
+		t.Errorf("stderr does not report the failed tick: %s", stderr.String())
+	}
+}
+
 func TestServeWAFReport(t *testing.T) {
 	objects := map[string][]byte{testWAFKey: serveGz(t, wafCleanAllow, wafCleanBlock)}
 	clock := &fakeClock{t: serveNow}

@@ -150,7 +150,7 @@ func parseWAFArgsFlags(args []string, now time.Time, usage io.Writer, extra func
 	)
 
 	common.register(fs, now, "WAF log bucket (required)", "key prefix WAF writes under, before AWSLogs/")
-	fs.StringVar(&cfg.Opts.Scope.OrgID, "org-id", "", "AWS Organizations ID for an organization trail, e.g. o-abc123")
+	fs.StringVar(&cfg.Opts.Scope.OrgID, "org-id", "", "AWS Organizations ID segment in the key, e.g. o-abc123, when logs are delivered under an organization")
 	fs.StringVar(&webACLs, "web-acls", "", "comma-separated web ACL names; a log is scanned if its name contains any of them")
 	fs.StringVar(&actions, "action", "", "comma-separated actions: ALLOW, BLOCK, COUNT, CAPTCHA, CHALLENGE")
 	fs.StringVar(&f.ClientIP, "client-ip", "", "only requests whose client IP contains this text")
