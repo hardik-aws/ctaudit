@@ -100,7 +100,7 @@ variable "image_repository" {
 variable "image_tag" {
   description = "Container image tag. Empty uses the chart's appVersion."
   type        = string
-  default     = "0.2.0"
+  default     = "0.2.1"
 }
 
 variable "bucket" {

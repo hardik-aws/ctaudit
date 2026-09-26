@@ -276,8 +276,8 @@ SIGTERM stops the running scan, flushes Loki, and exits 0 after at most 10 secon
 `make image` builds a static binary into `gcr.io/distroless/static-debian12:nonroot`, which runs as UID 65532. Set `IMAGE` and `TAG` to your registry, then push it yourself:
 
 ```bash
-make image IMAGE=111122223333.dkr.ecr.us-east-1.amazonaws.com/ctaudit TAG=0.2.0
-docker push 111122223333.dkr.ecr.us-east-1.amazonaws.com/ctaudit:0.2.0
+make image IMAGE=111122223333.dkr.ecr.us-east-1.amazonaws.com/ctaudit TAG=0.2.1
+docker push 111122223333.dkr.ecr.us-east-1.amazonaws.com/ctaudit:0.2.1
 ```
 
 ### IAM role for service accounts
@@ -324,7 +324,7 @@ Each entry in `scanners` becomes one Deployment and one ClusterIP Service. Each 
 # values-prod.yaml
 image:
   repository: 111122223333.dkr.ecr.us-east-1.amazonaws.com/ctaudit
-  tag: "0.2.0"
+  tag: "0.2.1"
 serviceAccount:
   roleArn: arn:aws:iam::111122223333:role/ctaudit-reader
 aws:
