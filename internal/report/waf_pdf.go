@@ -39,7 +39,7 @@ func renderWAFPDF(res engine.WAFResult, meta Meta, topN int) (*pdfDoc, error) {
 		{"Requests", groupDigits(sum.Total)},
 		{"Blocked", groupDigits(sum.Blocked())},
 		{"Allowed", groupDigits(sum.ByAction["ALLOW"])},
-		{"Counted", groupDigits(sum.ByAction["COUNT"])},
+		{"Counted", groupDigits(sum.Counted)},
 		{"Challenged", groupDigits(sum.ByAction["CAPTCHA"] + sum.ByAction["CHALLENGE"])},
 		{"Block rate", fmt.Sprintf("%.1f%%", sum.BlockRate()*100)},
 		{"First request", formatTime(sum.First)},

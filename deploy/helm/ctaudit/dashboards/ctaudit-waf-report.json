@@ -407,7 +407,7 @@
             "type": "loki",
             "uid": "${loki}"
           },
-          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"waf\", kind=\"request\", acl=~\"$acl\", action=~\"$action\"} | json client_ip=\"client_ip\" | __error__=\"\" | client_ip=~\"$client_ip\" | action=\"COUNT\" [$__range]))",
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"waf\", kind=\"request\", acl=~\"$acl\", action=~\"$action\"} | json client_ip=\"client_ip\" | __error__=\"\" | client_ip=~\"$client_ip\" | json cr=\"count_rules\" | cr!=\"\" [$__range]))",
           "queryType": "instant"
         }
       ],

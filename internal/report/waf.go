@@ -141,7 +141,7 @@ func WAFTerminal(w io.Writer, res engine.WAFResult, meta Meta, topN int) error {
 	p("  Requests\t%s\n", groupDigits(sum.Total))
 	p("  Blocked\t%s\n", groupDigits(sum.Blocked()))
 	p("  Allowed\t%s\n", groupDigits(sum.ByAction["ALLOW"]))
-	p("  Counted\t%s\n", groupDigits(sum.ByAction["COUNT"]))
+	p("  Counted\t%s\n", groupDigits(sum.Counted))
 	p("  Challenged\t%s\n", groupDigits(sum.ByAction["CAPTCHA"]+sum.ByAction["CHALLENGE"]))
 	p("  Block rate\t%.1f%%\n", sum.BlockRate()*100)
 	p("  First request\t%s\n", formatTime(sum.First))
@@ -152,7 +152,7 @@ func WAFTerminal(w io.Writer, res engine.WAFResult, meta Meta, topN int) error {
 		p("  none\n")
 	} else {
 		for _, f := range res.Findings {
-			p("  [%s] %s — %s: %s\n", f.Severity, f.Title, f.Actor, f.Detail)
+			p("  [%s] %s — %s: %s\n", f.Severity, clean(f.Title), clean(f.Actor), clean(f.Detail))
 		}
 	}
 	if res.FindingsDropped > 0 {
@@ -168,6 +168,20 @@ func WAFTerminal(w io.Writer, res engine.WAFResult, meta Meta, topN int) error {
 		p("  %s\tREQUESTS\n", t.keyHeader)
 		for _, kv := range pairs {
 			p("  %s\t%d\n", clean(kv.Key), kv.Count)
+		}
+	}
+
+	if meta.Narrowed {
+		p("\nMATCHING REQUESTS (showing %d of %d)\n", len(res.Matches), res.MatchedRecords)
+		if len(res.Matches) > 0 {
+			p("  TIME\tWEB ACL\tACTION\tRULE\tCLIENT IP\tCOUNTRY\tMETHOD\tHOST\tURI\tUSER AGENT\n")
+			for _, e := range res.Matches {
+				p("  %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					formatTime(e.Time), dashIfEmpty(clean(e.WebACL)), e.Action, dashIfEmpty(clean(e.Rule)),
+					clean(e.ClientIP), dashIfEmpty(clean(e.Country)), dashIfEmpty(clean(e.Method)),
+					dashIfEmpty(clean(e.Host)), truncate(dashIfEmpty(clean(e.URI)), pathWidth),
+					truncate(dashIfEmpty(clean(e.UserAgent)), userAgentWidth))
+			}
 		}
 	}
 

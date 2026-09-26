@@ -259,6 +259,22 @@ func TestWAFSummaryAddAndMerge(t *testing.T) {
 	}
 }
 
+func TestWAFSummaryCounted(t *testing.T) {
+	s1 := NewWAFSummary()
+	s1.Add(waflog.Entry{Action: "ALLOW", CountRules: []string{"geo-watch"}})
+	s1.Add(waflog.Entry{Action: "ALLOW"})
+	if s1.Counted != 1 {
+		t.Errorf("Counted = %d, want 1", s1.Counted)
+	}
+
+	s2 := NewWAFSummary()
+	s2.Add(waflog.Entry{Action: "BLOCK", CountRules: []string{"group/rule-a", "group/rule-b"}})
+	s1.Merge(s2)
+	if s1.Counted != 2 {
+		t.Errorf("Counted after merge = %d, want 2", s1.Counted)
+	}
+}
+
 func TestWAFBlockRateWhenZero(t *testing.T) {
 	s := NewWAFSummary()
 	if s.BlockRate() != 0 {

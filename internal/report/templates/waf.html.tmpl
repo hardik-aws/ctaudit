@@ -41,7 +41,7 @@
 <div class="kpi"><div class="v">{{num .Summary.Total}}</div><div class="k">Requests</div></div>
 <div class="kpi{{if .Summary.Blocked}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Blocked}}</div><div class="k">Blocked</div></div>
 <div class="kpi"><div class="v">{{num (index .Summary.ByAction "ALLOW")}}</div><div class="k">Allowed</div></div>
-<div class="kpi"><div class="v">{{num (index .Summary.ByAction "COUNT")}}</div><div class="k">Counted</div></div>
+<div class="kpi"><div class="v">{{num .Summary.Counted}}</div><div class="k">Counted</div></div>
 <div class="kpi{{if .Challenged}} warn{{end}}"><div class="v">{{num .Challenged}}</div><div class="k">Challenged</div></div>
 <div class="kpi"><div class="v">{{num .WebACLCount}}</div><div class="k">Web ACLs</div></div>
 <div class="kpi{{if .Summary.Blocked}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{.BlockRate}}</div><div class="k">Block rate</div></div>
@@ -76,7 +76,7 @@
 </section>{{end}}
 
 <section id="requests" aria-labelledby="requests-h">
-<h2 id="requests-h">Matching requests (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
+{{if .Meta.Narrowed}}<h2 id="requests-h">Matching requests (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
 <div class="panel">
 {{if .Matches}}<div class="tools">
 <input type="search" id="waf-filter" data-filter="waf-table" placeholder="Filter rows: IP, rule, host…" aria-label="Filter requests">
@@ -90,6 +90,9 @@
 </table></div>
 {{else}}<p class="empty">No matching requests in this window.</p>{{end}}
 </div>
+{{else}}<h2 id="requests-h">Matching requests</h2>
+<p class="note">Add a narrowing filter (--web-acls, --action, --client-ip, --country, --rule, --uri, or --host) to show the matching requests table.</p>
+{{end}}
 </section>
 
 {{if .Res.Errors}}<section id="errors" aria-label="Errors">

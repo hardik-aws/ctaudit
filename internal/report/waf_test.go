@@ -68,6 +68,48 @@ func sampleWAFResult() (engine.WAFResult, Meta) {
 	return res, meta
 }
 
+func TestWAFCountedTileUsesCountRulesNotAction(t *testing.T) {
+	// The COUNT action never appears at the top level, so the "Counted"
+	// tile must come from stats.WAFSummary.Counted (requests with a
+	// CountRules match), not sum.ByAction["COUNT"].
+	entries := []waflog.Entry{
+		{Action: "ALLOW", CountRules: []string{"geo-watch"}},
+		{Action: "BLOCK"},
+	}
+	sum := stats.NewWAFSummary()
+	for _, e := range entries {
+		sum.Add(e)
+	}
+	if sum.ByAction["COUNT"] != 0 {
+		t.Fatalf("fixture must have no top-level COUNT action, got %d", sum.ByAction["COUNT"])
+	}
+	res := engine.WAFResult{Summary: sum, Matches: entries, WebACLs: []string{"acl"}}
+	meta := Meta{Since: time.Now(), Until: time.Now(), GeneratedAt: time.Now()}
+
+	var buf bytes.Buffer
+	if err := WAFTerminal(&buf, res, meta, 10); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, line := range strings.Split(buf.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "Counted" && fields[1] == "1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("terminal Counted tile wrong:\n%s", buf.String())
+	}
+
+	buf.Reset()
+	if err := WAFHTML(&buf, res, meta, 10); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `<div class="v">1</div><div class="k">Counted</div>`) {
+		t.Errorf("HTML Counted tile wrong")
+	}
+}
+
 func TestWAFTerminal(t *testing.T) {
 	res, meta := sampleWAFResult()
 	if len(res.Findings) == 0 {
@@ -192,6 +234,74 @@ func TestWAFPDFEmpty(t *testing.T) {
 	if !drawnContains(d, "No matching records") {
 		t.Error("empty WAF PDF missing the empty-state note")
 	}
+}
+
+func TestWAFTerminalStripsControlCharacters(t *testing.T) {
+	res, meta := sampleWAFResult()
+	res.Findings[0].Detail = "evil\x1b[31mdetail"
+	res.Matches[0].URI = "/attack\x1b[31mpayload"
+	var buf bytes.Buffer
+	if err := WAFTerminal(&buf, res, meta, 10); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("escape sequence reached the terminal:\n%s", out)
+	}
+	if !strings.Contains(out, "evil [31mdetail") {
+		t.Errorf("sanitized detail missing:\n%s", out)
+	}
+}
+
+func TestWAFMatchingRequestsOnlyWhenNarrowed(t *testing.T) {
+	res, meta := sampleWAFResult()
+
+	meta.Narrowed = false
+	out := renderWAFTerminal(t, res, meta, 10)
+	if strings.Contains(out, "MATCHING REQUESTS") {
+		t.Error("terminal printed matching requests without a narrowing filter")
+	}
+
+	meta.Narrowed = true
+	out = renderWAFTerminal(t, res, meta, 10)
+	if !strings.Contains(out, "MATCHING REQUESTS") || !strings.Contains(out, "example.com") {
+		t.Errorf("terminal missing matching requests when narrowed:\n%s", out)
+	}
+}
+
+func TestWAFHTMLMatchingRequestsOnlyWhenNarrowed(t *testing.T) {
+	res, meta := sampleWAFResult()
+
+	meta.Narrowed = false
+	var buf bytes.Buffer
+	if err := WAFHTML(&buf, res, meta, 10); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "id=\"waf-table\"") {
+		t.Error("HTML printed the matching requests table without a narrowing filter")
+	}
+	if !strings.Contains(out, "narrowing filter") {
+		t.Error("HTML missing a note explaining why requests are hidden")
+	}
+
+	meta.Narrowed = true
+	buf.Reset()
+	if err := WAFHTML(&buf, res, meta, 10); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "id=\"waf-table\"") {
+		t.Error("HTML missing the matching requests table when narrowed")
+	}
+}
+
+func renderWAFTerminal(t *testing.T, res engine.WAFResult, meta Meta, topN int) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := WAFTerminal(&buf, res, meta, topN); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }
 
 func TestWAFTone(t *testing.T) {

@@ -27,7 +27,11 @@ type ExploitHit struct {
 // WAFSummary holds every aggregate the WAF report and findings need. One
 // goroutine owns it during a scan; shards are merged after.
 type WAFSummary struct {
-	Total       int
+	Total int
+	// Counted is requests with at least one CountRules entry: the WAF
+	// top-level action is never COUNT, so this is how a report shows a
+	// request a COUNT-mode rule matched.
+	Counted     int
 	First, Last time.Time
 
 	ByAction         Counter
@@ -133,6 +137,9 @@ func (s *WAFSummary) Add(e waflog.Entry) {
 	for _, r := range e.CountRules {
 		s.ByCountRule.add(r)
 	}
+	if len(e.CountRules) > 0 {
+		s.Counted++
+	}
 
 	if e.ClientIP != "" {
 		st := s.ip(e.ClientIP)
@@ -181,6 +188,7 @@ func (s *WAFSummary) Merge(o *WAFSummary) {
 		return
 	}
 	s.Total += o.Total
+	s.Counted += o.Counted
 	if !o.First.IsZero() && (s.First.IsZero() || o.First.Before(s.First)) {
 		s.First = o.First
 	}
