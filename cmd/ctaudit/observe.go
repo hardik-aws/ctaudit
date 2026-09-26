@@ -17,6 +17,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/engine"
 	"github.com/gsmappdev/ctaudit/internal/findings"
 	"github.com/gsmappdev/ctaudit/internal/sink"
+	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
 
 // observeFlags send a run's matches to Loki or a JSON Lines file and its
@@ -141,6 +142,17 @@ func (o *observer) elbEmit() func() func(elblog.Entry) {
 	}
 }
 
+// wafEmit streams WAF matches, or returns nil when no sink is set.
+func (o *observer) wafEmit() func() func(waflog.Entry) {
+	if o.sink == nil {
+		return nil
+	}
+	return func() func(waflog.Entry) {
+		w := o.sink.NewWriter()
+		return func(e waflog.Entry) { w.Write(o.enc.WAF(e)) }
+	}
+}
+
 // abort closes the sink if finish never ran, for example after a failed scan
 // or report. Its error is dropped because the run has already failed. It is
 // safe to defer.
@@ -253,6 +265,33 @@ func elbMetrics(res engine.ELBResult) func(*sink.Metrics) {
 		m.Gauge("ctaudit_elb_tls_handshake_failed", "Matching connections whose TLS handshake failed.", float64(cs.HandshakeFailed))
 		m.Gauge("ctaudit_elb_tls_handshake_avg_seconds", "Mean TLS handshake time.", avg(cs.HandshakeSum, cs.HandshakeCount))
 		m.Gauge("ctaudit_elb_tls_handshake_max_seconds", "Highest TLS handshake time.", cs.HandshakeMax)
+	}
+}
+
+// wafMetrics adds the WAF families. Every severity is always sent so no
+// stale series survive.
+func wafMetrics(res engine.WAFResult) func(*sink.Metrics) {
+	return func(m *sink.Metrics) {
+		sum := res.Summary
+		actions := map[string]int{}
+		if sum != nil {
+			for action, n := range sum.ByAction {
+				actions[action] = n
+			}
+		}
+		for _, a := range wafActions {
+			m.GaugeWith("ctaudit_waf_requests", "Matching requests in the last run, by action.",
+				"action", strings.ToLower(a), float64(actions[a]))
+		}
+		counts := map[findings.Severity]int{}
+		for _, f := range res.Findings {
+			counts[f.Severity]++
+		}
+		for _, sev := range []findings.Severity{findings.SevLow, findings.SevMedium, findings.SevHigh, findings.SevCritical} {
+			m.GaugeWith("ctaudit_waf_findings", "Findings in the last run, by severity.", "severity",
+				strings.ToLower(sev.String()), float64(counts[sev]))
+		}
+		m.Gauge("ctaudit_waf_web_acls", "Web ACLs discovered and kept in the last run.", float64(len(res.WebACLs)))
 	}
 }
 

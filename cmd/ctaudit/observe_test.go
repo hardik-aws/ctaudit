@@ -142,6 +142,52 @@ func TestRunCloudTrailPushesFindingCounts(t *testing.T) {
 	}
 }
 
+func TestRunWAFPushesMetrics(t *testing.T) {
+	var pg fakePushgateway
+	srv := pg.server(t)
+	code, _, stderr := runWAFArgs(t, wafStore(t, wafCleanAllow, wafExploitAllow),
+		"--html", "", "--fail-on", "none", "--pushgateway", srv.URL)
+	if code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, stderr)
+	}
+	if len(pg.paths) != 1 || pg.paths[0] != "/metrics/job/ctaudit/subcommand/waf" {
+		t.Fatalf("paths = %v", pg.paths)
+	}
+	for _, want := range []string{
+		"ctaudit_objects_scanned 1\n",
+		"ctaudit_records_read 2\n",
+		"ctaudit_records_matched 2\n",
+		`ctaudit_waf_requests{action="allow"} 2`,
+		`ctaudit_waf_requests{action="block"} 0`,
+		`ctaudit_waf_findings{severity="critical"} 1`,
+		`ctaudit_waf_findings{severity="low"} 0`,
+		"ctaudit_waf_web_acls 1\n",
+		"ctaudit_last_success_timestamp_seconds ",
+	} {
+		if !strings.Contains(pg.body, want) {
+			t.Errorf("push body missing %q:\n%s", want, pg.body)
+		}
+	}
+}
+
+func TestRunWAFLokiFailureExitsTwo(t *testing.T) {
+	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "entry too far behind", http.StatusBadRequest)
+	}))
+	defer loki.Close()
+	htmlPath := filepath.Join(t.TempDir(), "waf.html")
+	code, _, stderr := runWAFArgs(t, wafStore(t, wafCleanAllow), "--html", htmlPath, "--loki", loki.URL)
+	if code != exitFailed {
+		t.Fatalf("exit = %d, want %d; stderr = %s", code, exitFailed, stderr)
+	}
+	if !strings.Contains(stderr, "loki push") {
+		t.Errorf("stderr missing loki error: %s", stderr)
+	}
+	if _, err := os.Stat(htmlPath); err != nil {
+		t.Errorf("HTML report should still be written: %v", err)
+	}
+}
+
 func TestRunELBLokiFailureExitsTwo(t *testing.T) {
 	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "entry too far behind", http.StatusBadRequest)
