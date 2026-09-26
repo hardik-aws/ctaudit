@@ -1,7 +1,7 @@
 {
   "uid": "ctaudit-cloudtrail-report",
   "title": "ctaudit / CloudTrail report",
-  "description": "The ctaudit CloudTrail HTML report rebuilt from the event and finding lines ctaudit ships to Loki (--loki, or serve cloudtrail). Loki stores lines at ship time, so the range must cover the scan runs, not the event times.",
+  "description": "The ctaudit CloudTrail HTML report rebuilt from the event and finding lines ctaudit ships to Loki (--loki, or serve cloudtrail). Lines shipped with --loki-time event (the serve default) are stored at the event time; lines shipped with --loki-time scan are stored at the scan time, so the range must then cover the scan runs.",
   "tags": [
     "ctaudit",
     "cloudtrail",
@@ -702,9 +702,12 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "sum"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -1930,119 +1933,6 @@
     },
     {
       "type": "table",
-      "title": "By account",
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki}"
-          },
-          "expr": "topk($top, sum by (account) (count_over_time({job=~\"$job\", subcommand=\"cloudtrail\", kind=\"event\", account=~\"$account\", region=~\"$region\"} | json arn=\"userIdentity.arn\", invokedBy=\"userIdentity.invokedBy\", userName=\"userIdentity.userName\", principalId=\"userIdentity.principalId\", eventName=\"eventName\" | __error__=\"\" | label_format actor=`{{ if .arn }}{{ .arn }}{{ else if .invokedBy }}{{ .invokedBy }}{{ else if .userName }}{{ .userName }}{{ else if .principalId }}{{ .principalId }}{{ else }}unknown{{ end }}` | actor=~\"$principal\" | eventName=~\"$event\" | keep account [$__range])))",
-          "queryType": "instant",
-          "legendFormat": "{{account}}"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "mode": "seriesToRows",
-            "reducers": [
-              "lastNotNull"
-            ],
-            "includeTimeField": false
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "renameByName": {
-              "Field": "Account",
-              "Last *": "Events"
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "filterable": true
-          },
-          "unit": "string"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Events"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "custom.width",
-                "value": 110
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "gauge",
-                  "mode": "basic",
-                  "valueDisplayMode": "text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false,
-          "reducer": [
-            "sum"
-          ],
-          "fields": ""
-        }
-      },
-      "description": "Matching events per AWS account. Follows the dashboard filters.",
-      "id": 23,
-      "datasource": {
-        "type": "loki",
-        "uid": "${loki}"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 49,
-        "w": 8,
-        "h": 8
-      }
-    },
-    {
-      "type": "table",
       "title": "By region",
       "targets": [
         {
@@ -2148,9 +2038,9 @@
         "uid": "${loki}"
       },
       "gridPos": {
-        "x": 8,
+        "x": 0,
         "y": 49,
-        "w": 8,
+        "w": 12,
         "h": 8
       }
     },
@@ -2261,9 +2151,9 @@
         "uid": "${loki}"
       },
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 49,
-        "w": 8,
+        "w": 12,
         "h": 8
       }
     },
