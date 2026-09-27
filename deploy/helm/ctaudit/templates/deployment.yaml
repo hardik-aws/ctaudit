@@ -6,6 +6,7 @@
 {{- $debug := $.Values.debug }}
 {{- if hasKey $s "debug" }}{{ $debug = $s.debug }}{{ end }}
 {{- $logFormat := default $.Values.logFormat $s.logFormat }}
+{{- $bucketRegion := default $.Values.aws.bucketRegion $s.bucketRegion }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -67,7 +68,7 @@ spec:
             - {{ default "24h" $s.lookback | quote }}
             - --listen
             - ":8080"
-            {{- with $.Values.aws.bucketRegion }}
+            {{- with $bucketRegion }}
             - --bucket-region
             - {{ . | quote }}
             {{- end }}
@@ -87,7 +88,7 @@ spec:
             {{- range $s.args }}
             - {{ . | quote }}
             {{- end }}
-          {{- with $.Values.aws.bucketRegion }}
+          {{- with $bucketRegion }}
           env:
             - name: AWS_REGION
               value: {{ . | quote }}

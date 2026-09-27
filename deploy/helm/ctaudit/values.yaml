@@ -36,6 +36,7 @@ scanners:
     interval: 15m
     lookback: 24h
     bucket: ""              # overrides aws.bucket
+    bucketRegion: ""        # overrides aws.bucketRegion
     accounts: []            # overrides aws.accounts
     regions: []             # overrides aws.regions
     args: []                # extra flags, e.g. ["--org-id", "o-abc123"]
