@@ -2,6 +2,7 @@ package sink
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/ctevent"
 	"github.com/gsmappdev/ctaudit/internal/elblog"
 	"github.com/gsmappdev/ctaudit/internal/findings"
+	"github.com/gsmappdev/ctaudit/internal/s3log"
 	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
 
@@ -184,6 +186,57 @@ func TestEncoderWAFOmitsEmptyFields(t *testing.T) {
 	for _, k := range emptyFields {
 		if _, ok := m[k]; ok {
 			t.Errorf("empty field %s should be omitted but is present: %s", k, line)
+		}
+	}
+}
+
+func TestEncoderS3(t *testing.T) {
+	x := s3log.Entry{
+		Time: time.Date(2026, 9, 20, 10, 15, 2, 0, time.UTC), Bucket: "data-bucket", RemoteIP: "192.0.2.50",
+		Requester: "arn:aws:iam::111122223333:user/alice", RequestID: "6D7E", Operation: "REST.GET.OBJECT",
+		Key: "secrets/db.env", Method: "GET", Path: "/secrets/db.env", Proto: "HTTP/1.1", Status: 403,
+		ErrorCode: "AccessDenied", BytesSent: 243, TotalTimeMS: 9, TurnaroundMS: -1, UserAgent: "Boto3/1.34.0",
+		SigVersion: "SigV4", CipherSuite: "ECDHE-RSA-AES128-GCM-SHA256", AuthType: "AuthHeader",
+		HostHeader: "data-bucket.s3.us-east-1.amazonaws.com", TLSVersion: "TLSv1.2",
+	}
+	enc := Encoder{Job: "ctaudit", Subcommand: "s3", RunID: "r1"}
+	labels, at, line := enc.S3(x)
+	want := Labels{"job": "ctaudit", "subcommand": "s3", "kind": "request", "bucket": "data-bucket", "status_class": "4xx"}
+	if !reflect.DeepEqual(labels, want) || !at.Equal(x.Time) {
+		t.Fatalf("labels %v at %v", labels, at)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(line, &got); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range map[string]any{
+		"kind": "request", "run_id": "r1", "bucket": "data-bucket", "remote_ip": "192.0.2.50",
+		"requester": "arn:aws:iam::111122223333:user/alice", "operation": "REST.GET.OBJECT", "key": "secrets/db.env",
+		"method": "GET", "path": "/secrets/db.env", "status": float64(403), "error_code": "AccessDenied",
+		"bytes_sent": float64(243), "total_time_ms": float64(9), "tls_version": "TLSv1.2", "auth_type": "AuthHeader",
+	} {
+		if got[k] != v {
+			t.Errorf("%s = %v, want %v", k, got[k], v)
+		}
+	}
+	if _, ok := got["turnaround_time_ms"]; ok {
+		t.Error("unknown turnaround time must be omitted")
+	}
+	if _, ok := got["event_time"]; !ok {
+		t.Error("event_time missing")
+	}
+}
+
+func TestEncoderS3Anonymous(t *testing.T) {
+	_, _, line := Encoder{Subcommand: "s3"}.S3(s3log.Entry{Bucket: "b", Operation: "REST.PUT.OBJECT", TotalTimeMS: -1, TurnaroundMS: -1})
+	var got map[string]any
+	json.Unmarshal(line, &got)
+	if got["requester"] != "anonymous" || got["bytes_sent"] != float64(0) {
+		t.Fatalf("line = %s", line)
+	}
+	for _, k := range []string{"key", "status", "referer", "plain_http", "acl_required"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("empty %s must be omitted: %s", k, line)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/ctevent"
 	"github.com/gsmappdev/ctaudit/internal/elblog"
 	"github.com/gsmappdev/ctaudit/internal/findings"
+	"github.com/gsmappdev/ctaudit/internal/s3log"
 	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
 
@@ -217,6 +218,62 @@ func (e Encoder) WAF(x waflog.Entry) (Labels, time.Time, []byte) {
 		ClientIP: x.ClientIP, Country: x.Country, Method: x.Method, Host: x.Host, URI: x.URI, UserAgent: x.UserAgent,
 		Labels: x.Labels, CountRules: x.CountRules, RateRule: x.RateRule, ResponseCode: x.ResponseCode,
 		Oversize: x.Oversize, JA3: x.JA3, JA4: x.JA4, RequestID: x.RequestID, ChallengeFailed: x.ChallengeFailed,
+	})
+	return labels, x.Time, b
+}
+
+type s3Line struct {
+	Kind           string    `json:"kind"`
+	RunID          string    `json:"run_id"`
+	EventTime      time.Time `json:"event_time"`
+	Bucket         string    `json:"bucket,omitempty"`
+	RemoteIP       string    `json:"remote_ip,omitempty"`
+	Requester      string    `json:"requester"`
+	RequestID      string    `json:"request_id,omitempty"`
+	Operation      string    `json:"operation"`
+	Key            string    `json:"key,omitempty"`
+	Method         string    `json:"method,omitempty"`
+	Path           string    `json:"path,omitempty"`
+	Proto          string    `json:"proto,omitempty"`
+	Status         int       `json:"status,omitempty"`
+	ErrorCode      string    `json:"error_code,omitempty"`
+	BytesSent      int64     `json:"bytes_sent"`
+	ObjectSize     int64     `json:"object_size,omitempty"`
+	TotalTimeMS    *int64    `json:"total_time_ms,omitempty"`
+	TurnaroundMS   *int64    `json:"turnaround_time_ms,omitempty"`
+	Referer        string    `json:"referer,omitempty"`
+	UserAgent      string    `json:"user_agent,omitempty"`
+	SigVersion     string    `json:"sig_version,omitempty"`
+	CipherSuite    string    `json:"cipher_suite,omitempty"`
+	AuthType       string    `json:"auth_type,omitempty"`
+	HostHeader     string    `json:"host_header,omitempty"`
+	TLSVersion     string    `json:"tls_version,omitempty"`
+	AccessPointARN string    `json:"access_point_arn,omitempty"`
+	ACLRequired    bool      `json:"acl_required,omitempty"`
+	PlainHTTP      bool      `json:"plain_http,omitempty"`
+}
+
+// knownMS returns nil for an unmeasured (-1) millisecond value, so it is
+// left out of the line.
+func knownMS(v int64) *int64 {
+	if v < 0 {
+		return nil
+	}
+	return &v
+}
+
+// S3 encodes one S3 server access log request. The requester is
+// "anonymous" for unauthenticated requests.
+func (e Encoder) S3(x s3log.Entry) (Labels, time.Time, []byte) {
+	labels := e.labels("request", "bucket", x.Bucket, "status_class", x.StatusClass())
+	b, _ := json.Marshal(s3Line{
+		Kind: "request", RunID: e.RunID, EventTime: x.Time, Bucket: x.Bucket, RemoteIP: x.RemoteIP,
+		Requester: x.Principal(), RequestID: x.RequestID, Operation: x.Operation, Key: x.Key,
+		Method: x.Method, Path: x.Path, Proto: x.Proto, Status: x.Status, ErrorCode: x.ErrorCode,
+		BytesSent: x.BytesSent, ObjectSize: x.ObjectSize, TotalTimeMS: knownMS(x.TotalTimeMS), TurnaroundMS: knownMS(x.TurnaroundMS),
+		Referer: x.Referer, UserAgent: x.UserAgent, SigVersion: x.SigVersion, CipherSuite: x.CipherSuite,
+		AuthType: x.AuthType, HostHeader: x.HostHeader, TLSVersion: x.TLSVersion, AccessPointARN: x.AccessPointARN,
+		ACLRequired: x.ACLRequired, PlainHTTP: x.PlainHTTP,
 	})
 	return labels, x.Time, b
 }
