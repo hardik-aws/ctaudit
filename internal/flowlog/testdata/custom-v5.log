@@ -1,0 +1,6 @@
+version vpc-id subnet-id instance-id interface-id account-id type srcaddr dstaddr srcport dstport pkt-srcaddr pkt-dstaddr protocol bytes packets start end action tcp-flags log-status region az-id pkt-src-aws-service pkt-dst-aws-service flow-direction traffic-path
+5 vpc-0123456789abcdef0 subnet-0aaa1111bbbb2222c - eni-0123456789abcdef0 111122223333 IPv4 10.0.0.200 52.94.133.131 49600 443 10.0.1.5 52.94.133.131 6 3000000 2100 1789902000 1789902060 ACCEPT 3 OK us-east-1 use1-az1 - S3 egress 8
+5 vpc-0123456789abcdef0 subnet-0aaa1111bbbb2222c i-0123456789abcdef0 eni-0fedcba9876543210 111122223333 IPv4 192.0.2.44 10.0.1.5 60000 22 192.0.2.44 10.0.1.5 6 5200 40 1789902010 1789902070 ACCEPT 2 OK us-east-1 use1-az1 - - ingress -
+5 vpc-0123456789abcdef0 subnet-0aaa1111bbbb2222c i-0123456789abcdef0 eni-0fedcba9876543210 111122223333 IPv4 198.51.100.99 10.0.1.5 443 61000 198.51.100.99 10.0.1.5 6 40 1 1789902020 1789902080 REJECT 16 OK us-east-1 use1-az1 - - ingress -
+5 vpc-0123456789abcdef0 subnet-0aaa1111bbbb2222c i-0123456789abcdef0 eni-0fedcba9876543210 111122223333 IPv6 2001:db8::99 fd00::5 51000 3306 2001:db8::99 fd00::5 6 60 1 1789902030 1789902090 REJECT 2 OK us-east-1 use1-az1 - - ingress -
+5 vpc-0123456789abcdef0 - - eni-0aaa1111bbbb2222c 111122223333 - - - - - - - - - - 1789902000 1789902060 - - NODATA us-east-1 use1-az1 - - - -
