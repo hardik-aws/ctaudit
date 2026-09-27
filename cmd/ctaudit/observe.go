@@ -16,6 +16,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/elblog"
 	"github.com/gsmappdev/ctaudit/internal/engine"
 	"github.com/gsmappdev/ctaudit/internal/findings"
+	"github.com/gsmappdev/ctaudit/internal/s3log"
 	"github.com/gsmappdev/ctaudit/internal/sink"
 	"github.com/gsmappdev/ctaudit/internal/waflog"
 )
@@ -150,6 +151,17 @@ func (o *observer) wafEmit() func() func(waflog.Entry) {
 	return func() func(waflog.Entry) {
 		w := o.sink.NewWriter()
 		return func(e waflog.Entry) { w.Write(o.enc.WAF(e)) }
+	}
+}
+
+// s3Emit streams S3 access log matches, or returns nil when no sink is set.
+func (o *observer) s3Emit() func() func(s3log.Entry) {
+	if o.sink == nil {
+		return nil
+	}
+	return func() func(s3log.Entry) {
+		w := o.sink.NewWriter()
+		return func(e s3log.Entry) { w.Write(o.enc.S3(e)) }
 	}
 }
 
@@ -292,6 +304,34 @@ func wafMetrics(res engine.WAFResult) func(*sink.Metrics) {
 				strings.ToLower(sev.String()), float64(counts[sev]))
 		}
 		m.Gauge("ctaudit_waf_web_acls", "Web ACLs discovered and kept in the last run.", float64(len(res.WebACLs)))
+	}
+}
+
+// s3Metrics adds the S3 families. Every status class and severity is always
+// sent so no stale series survive.
+func s3Metrics(res engine.S3Result) func(*sink.Metrics) {
+	return func(m *sink.Metrics) {
+		classes := map[string]int{}
+		var sent int64
+		if sum := res.Summary; sum != nil {
+			for status, n := range sum.ByStatus {
+				classes[statusClass(status)] += n
+			}
+			sent = sum.BytesSent
+		}
+		for _, c := range statusClasses {
+			m.GaugeWith("ctaudit_s3_requests", "Matching requests in the last run, by status class.",
+				"status_class", c, float64(classes[c]))
+		}
+		counts := map[findings.Severity]int{}
+		for _, f := range res.Findings {
+			counts[f.Severity]++
+		}
+		for _, sev := range severities {
+			m.GaugeWith("ctaudit_s3_findings", "Findings in the last run, by severity.", "severity",
+				strings.ToLower(sev.String()), float64(counts[sev]))
+		}
+		m.Gauge("ctaudit_s3_bytes_sent", "Bytes sent by matching requests in the last run.", float64(sent))
 	}
 }
 

@@ -170,6 +170,28 @@ func TestRunWAFPushesMetrics(t *testing.T) {
 	}
 }
 
+func TestRunS3PushesMetrics(t *testing.T) {
+	var pg fakePushgateway
+	srv := pg.server(t)
+	code, _, stderr := runS3Args(t, s3Store(t, s3CleanGet, s3AnonPut),
+		"--html", "", "--fail-on", "none", "--pushgateway", srv.URL)
+	if code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, stderr)
+	}
+	if len(pg.paths) != 1 || pg.paths[0] != "/metrics/job/ctaudit/subcommand/s3" {
+		t.Fatalf("paths = %v", pg.paths)
+	}
+	for _, want := range []string{
+		`ctaudit_s3_requests{status_class="2xx"} 2`,
+		`ctaudit_s3_findings{severity="critical"} 1`,
+		"ctaudit_s3_bytes_sent 100",
+	} {
+		if !strings.Contains(pg.body, want) {
+			t.Errorf("push body missing %q:\n%s", want, pg.body)
+		}
+	}
+}
+
 func TestRunWAFLokiFailureExitsTwo(t *testing.T) {
 	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "entry too far behind", http.StatusBadRequest)

@@ -44,7 +44,8 @@ Commands:
   cloudtrail   scan CloudTrail logs for security findings and API activity
   elb          scan Elastic Load Balancing access logs (alias: alb)
   waf          scan AWS WAF logs
-  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb|waf)
+  s3           scan Amazon S3 server access logs
+  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb|waf|s3)
 
 Run "ctaudit <command> -h" for the flags of a command.
 `
@@ -84,6 +85,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, newStore 
 		return runELB(ctx, args[1:], stdout, stderr, newStore, now)
 	case "waf":
 		return runWAF(ctx, args[1:], stdout, stderr, newStore, now)
+	case "s3":
+		return runS3(ctx, args[1:], stdout, stderr, newStore, now)
 	case "serve":
 		return runServe(ctx, args[1:], stdout, stderr, newStore, time.Now)
 	case "-h", "-help", "--help", "help":
