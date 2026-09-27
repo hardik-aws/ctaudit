@@ -1274,7 +1274,7 @@
       }
     },
     {
-      "type": "piechart",
+      "type": "bargauge",
       "title": "Load balancer",
       "targets": [
         {
@@ -1290,26 +1290,35 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": []
       },
       "options": {
-        "pieType": "donut",
-        "displayLabels": [
-          "percent"
-        ],
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 24,
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
+          "showLegend": false
         },
         "reduceOptions": {
           "calcs": [
@@ -1318,9 +1327,7 @@
           "fields": "/^Value/",
           "values": true
         },
-        "tooltip": {
-          "mode": "single"
-        }
+        "text": {}
       },
       "description": "Share of matching requests served by each load balancer. Follows the dashboard filters.",
       "id": 23,
@@ -1344,11 +1351,22 @@
         {
           "id": "merge",
           "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },
     {
-      "type": "piechart",
+      "type": "bargauge",
       "title": "Method",
       "targets": [
         {
@@ -1364,26 +1382,35 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": []
       },
       "options": {
-        "pieType": "donut",
-        "displayLabels": [
-          "percent"
-        ],
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 24,
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
+          "showLegend": false
         },
         "reduceOptions": {
           "calcs": [
@@ -1392,9 +1419,7 @@
           "fields": "/^Value/",
           "values": true
         },
-        "tooltip": {
-          "mode": "single"
-        }
+        "text": {}
       },
       "description": "Share of matching requests by HTTP method; the six most used methods. Follows the dashboard filters.",
       "id": 24,
@@ -1418,11 +1443,22 @@
         {
           "id": "merge",
           "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },
     {
-      "type": "piechart",
+      "type": "bargauge",
       "title": "Listener type",
       "targets": [
         {
@@ -1438,26 +1474,35 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": []
       },
       "options": {
-        "pieType": "donut",
-        "displayLabels": [
-          "percent"
-        ],
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 24,
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
+          "showLegend": false
         },
         "reduceOptions": {
           "calcs": [
@@ -1466,9 +1511,7 @@
           "fields": "/^Value/",
           "values": true
         },
-        "tooltip": {
-          "mode": "single"
-        }
+        "text": {}
       },
       "description": "Share of matching requests by listener type (http, https, h2, grpcs, ws, wss, tcp, tls). Follows the dashboard filters.",
       "id": 25,
@@ -1492,6 +1535,17 @@
         {
           "id": "merge",
           "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },

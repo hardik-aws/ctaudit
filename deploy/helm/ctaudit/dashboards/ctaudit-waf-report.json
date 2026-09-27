@@ -1275,7 +1275,7 @@
       }
     },
     {
-      "type": "piechart",
+      "type": "bargauge",
       "title": "Actions by source",
       "targets": [
         {
@@ -1291,26 +1291,35 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": []
       },
       "options": {
-        "pieType": "donut",
-        "displayLabels": [
-          "percent"
-        ],
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 24,
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
+          "showLegend": false
         },
         "reduceOptions": {
           "calcs": [
@@ -1319,9 +1328,7 @@
           "fields": "/^Value/",
           "values": true
         },
-        "tooltip": {
-          "mode": "single"
-        }
+        "text": {}
       },
       "description": "Share of matching requests by inspection source (WAF, CloudFront, or an App Runner/AppSync/Cognito/Verified Access source). Follows the dashboard filters.",
       "id": 17,
@@ -1345,6 +1352,17 @@
         {
           "id": "merge",
           "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },
