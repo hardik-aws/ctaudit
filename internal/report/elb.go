@@ -89,6 +89,8 @@ func tone(v string) string {
 		return "info"
 	case v == "ALLOW":
 		return "ok"
+	case v == "SigV2":
+		return "warn"
 	}
 	return ""
 }

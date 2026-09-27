@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon S3 access logs {{.Since}} .. {{.Until}}</title>
+<style>{{elbcss}}</style>
+</head>
+<body>
+<header class="topbar">
+<div class="topbar-in">
+<div class="brand">Amazon S3 access logs<small>{{.Since}} .. {{.Until}}</small></div>
+<nav aria-label="Sections">
+<a href="#overview">Overview</a>
+<a href="#findings">Findings</a>
+<a href="#hourly">Hourly</a>
+{{if or .Tables .ByteTables}}<a href="#breakdown">Breakdown</a>{{end}}
+<a href="#requests">Requests</a>
+{{if .Res.Errors}}<a href="#errors">Errors</a>{{end}}
+</nav>
+</div>
+</header>
+<main>
+
+<section id="overview" aria-labelledby="overview-h">
+<h1 id="overview-h">Amazon S3 access logs</h1>
+<dl class="facts">
+<div><dt>Bucket</dt><dd class="mono">{{.Meta.Bucket}}</dd></div>
+<div><dt>Window (UTC)</dt><dd>{{.Since}} .. {{.Until}} · {{.Days}} days</dd></div>
+<div><dt>Layout</dt><dd class="mono">{{dash .Res.Layout}}</dd></div>
+<div><dt>Source buckets</dt><dd>{{num .BucketCount}}</dd></div>
+<div><dt>First / last request</dt><dd>{{ts .Summary.First}} · {{ts .Summary.Last}}</dd></div>
+<div><dt>Scan</dt><dd>{{num .Res.ObjectsScanned}} objects · {{num .Res.RecordsRead}} records</dd></div>
+<div><dt>Matched</dt><dd>{{num .Res.MatchedRecords}} requests</dd></div>
+<div><dt>Generated</dt><dd>{{.Generated}} · took {{.Elapsed}}</dd></div>
+</dl>
+</section>
+
+<section aria-label="Request totals">
+<div class="kpis">
+<div class="kpi"><div class="v">{{num .Summary.Total}}</div><div class="k">Requests</div></div>
+<div class="kpi{{if .Summary.Errors}} warn{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Errors}}</div><div class="k">Errors</div></div>
+<div class="kpi{{if .Summary.Denied}} crit{{else if .Summary.Total}} ok{{end}}"><div class="v">{{num .Summary.Denied}}</div><div class="k">Denied</div></div>
+<div class="kpi{{if .Summary.Anonymous}} warn{{end}}"><div class="v">{{num .Summary.Anonymous}}</div><div class="k">Anonymous</div></div>
+<div class="kpi"><div class="v">{{.BytesSent}}</div><div class="k">Bytes sent</div></div>
+<div class="kpi"><div class="v">{{num .BucketCount}}</div><div class="k">Buckets</div></div>
+<div class="kpi"><div class="v">{{num .RequesterCount}}</div><div class="k">Requesters</div></div>
+</div>
+</section>
+
+<section id="findings" aria-labelledby="findings-h">
+<h2 id="findings-h">Findings ({{len .Res.Findings}})</h2>
+{{if .Res.Findings}}<div class="panel"><div class="scroll"><table class="data">
+<thead><tr><th>Severity</th><th>Rule</th><th>Title</th><th>Actor</th><th>Detail</th><th>Time</th></tr></thead>
+<tbody>
+{{range .Res.Findings}}<tr><td><span class="pill {{sevtone .Severity}}">{{.Severity}}</span></td><td class="mono">{{.Rule}}</td><td>{{.Title}}</td><td class="mono">{{dash .Actor}}</td><td class="wrap">{{.Detail}}</td><td class="t">{{ts .Time}}</td></tr>
+{{end}}</tbody>
+</table></div></div>{{else}}<p class="empty">No findings.</p>{{end}}
+{{if .Res.FindingsDropped}}<p class="note">{{num .Res.FindingsDropped}} more findings not shown.</p>{{end}}
+</section>
+
+<section id="hourly" aria-labelledby="hourly-h">
+<h2 id="hourly-h">Requests over time <span class="sub">UTC · hover a bar for the per-status split</span></h2>
+<div class="panel chart">
+<div class="hours" role="img" aria-label="Requests per hour">
+{{range .Hours}}<div class="hour" title="{{.Key}} — {{.Title}}"><span class="tip">{{.Key}} · {{num .Count}}</span><div class="col" style="height:{{.Pct}}%"></div></div>
+{{end}}</div>
+</div>
+</section>
+
+{{if or .Tables .ByteTables}}<section id="breakdown" aria-labelledby="breakdown-h">
+<h2 id="breakdown-h">Request breakdown <span class="sub">top values by request count</span></h2>
+<div class="grid">
+{{range .Tables}}{{template "rank" .}}
+{{end}}{{range .ByteTables}}{{template "rankbytes" .}}
+{{end}}</div>
+</section>{{end}}
+
+<section id="requests" aria-labelledby="requests-h">
+{{if .Meta.Narrowed}}<h2 id="requests-h">Matching requests (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
+<div class="panel">
+{{if .Matches}}<div class="tools">
+<input type="search" id="s3-filter" data-filter="s3-table" placeholder="Filter rows: bucket, key, requester…" aria-label="Filter requests">
+<span class="count" data-count="s3-table" aria-live="polite"></span>
+</div>
+<div class="scroll"><table class="data" id="s3-table">
+<thead><tr><th>Time</th><th>Bucket</th><th>Operation</th><th>Key</th><th>Status</th><th>Error</th><th>Requester</th><th>Remote IP</th><th>Bytes</th><th>TLS</th><th>User agent</th></tr></thead>
+<tbody>
+{{range .Matches}}<tr><td class="t">{{ts .Time}}</td><td class="mono">{{.Bucket}}</td><td class="mono">{{.Operation}}</td><td class="mono wrap">{{.Key}}</td><td><span class="pill {{tone (printf "%d" .Status)}}">{{.Status}}</span></td><td class="mono">{{dash .ErrorCode}}</td><td class="mono">{{if .Requester}}{{.Requester}}{{else}}anonymous{{end}}</td><td class="mono">{{.RemoteIP}}</td><td>{{bytes .BytesSent}}</td><td><span class="pill {{tone .TLSVersion}}">{{dash .TLSVersion}}</span></td><td class="wrap">{{.UserAgent}}</td></tr>
+{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">No matching requests in this window.</p>{{end}}
+</div>
+{{else}}<h2 id="requests-h">Matching requests</h2>
+<p class="note">Add a narrowing filter (--operations, --statuses, --requester, --client-ip, --key-prefix, --errors-only, or --buckets) to show the matching requests table.</p>
+{{end}}
+</section>
+
+{{if .Res.Errors}}<section id="errors" aria-label="Errors">
+<details class="panel errors">
+<summary>Errors ({{len .Res.Errors}}) <span class="sub">objects or lines that could not be read</span></summary>
+<ul>{{range .Res.Errors}}<li class="mono">{{.}}</li>{{end}}</ul>
+</details>
+</section>{{end}}
+
+<p class="note">Tip: click a column header to sort; use the filter box to narrow rows (space-separated terms must all match).</p>
+</main>
+<script>{{elbjs}}</script>
+</body>
+</html>
+{{define "val"}}{{$t := tone .}}{{if $t}}<span class="pill {{$t}}">{{.}}</span>{{else}}{{dash .}}{{end}}{{end}}
+{{define "rank"}}<div class="panel">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} shown</span></div>
+<table class="rank">
+<thead><tr><th scope="col">{{.KeyHeader}}</th><th scope="col" class="cnt">Count</th><th scope="col"><span class="sr">share</span></th></tr></thead>
+<colgroup><col><col style="width:84px"><col style="width:26%"></colgroup>
+<tbody>
+{{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{template "val" .Key}}</td><td class="cnt">{{num .Count}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}
+{{define "rankbytes"}}<div class="panel">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} shown</span></div>
+<table class="rank">
+<thead><tr><th scope="col">{{.KeyHeader}}</th><th scope="col" class="cnt">Bytes</th><th scope="col"><span class="sr">share</span></th></tr></thead>
+<colgroup><col><col style="width:84px"><col style="width:26%"></colgroup>
+<tbody>
+{{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{dash .Key}}</td><td class="cnt">{{bytecount .Count}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}
