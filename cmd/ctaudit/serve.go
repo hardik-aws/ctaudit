@@ -20,6 +20,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/engine"
 	"github.com/gsmappdev/ctaudit/internal/findings"
 	"github.com/gsmappdev/ctaudit/internal/report"
+	"github.com/gsmappdev/ctaudit/internal/s3rules"
 	"github.com/gsmappdev/ctaudit/internal/s3src"
 	"github.com/gsmappdev/ctaudit/internal/stats"
 	"github.com/gsmappdev/ctaudit/internal/wafrules"
@@ -30,7 +31,7 @@ const (
 	maxLookback     = 720 * time.Hour
 	shutdownGrace   = 10 * time.Second
 	reportCSP       = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
-	serveUsage      = "usage: ctaudit serve cloudtrail|elb|waf [flags]"
+	serveUsage      = "usage: ctaudit serve cloudtrail|elb|waf|s3 [flags]"
 	day             = 24 * time.Hour
 	metricsMIMEType = "text/plain; version=0.0.4; charset=utf-8"
 )
@@ -39,8 +40,9 @@ const (
 // server. They are rejected only when set explicitly.
 var serveRejected = []string{"since", "until", "html", "pdf", "pushgateway", "jsonl", "fail-on"}
 
-// serveConfig is the parsed serve command line. Exactly one of ct, elb, and
-// waf is set; their scope days and filter window are replaced on every tick.
+// serveConfig is the parsed serve command line. Exactly one of ct, elb, waf,
+// and s3 is set; their scope days and filter window are replaced on every
+// tick.
 type serveConfig struct {
 	sub      string
 	interval time.Duration
@@ -54,6 +56,7 @@ type serveConfig struct {
 	ct       *config
 	elb      *elbConfig
 	waf      *wafConfig
+	s3       *s3Config
 }
 
 func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig, error) {
@@ -89,6 +92,13 @@ func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig,
 			return serveConfig{}, err
 		}
 		sc.sub, sc.waf, set = "waf", &cfg, s
+		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
+	case "s3":
+		cfg, s, err := parseS3ArgsFlags(args[1:], now, usage, extra)
+		if err != nil {
+			return serveConfig{}, err
+		}
+		sc.sub, sc.s3, set = "s3", &cfg, s
 		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
 	default:
 		return serveConfig{}, fmt.Errorf("unknown serve subcommand %q; %s", args[0], serveUsage)
@@ -209,6 +219,9 @@ func (c *serveConfig) setLogger(log *slog.Logger) {
 	if c.waf != nil {
 		c.waf.Opts.Debug = log
 	}
+	if c.s3 != nil {
+		c.s3.Opts.Debug = log
+	}
 }
 
 // server runs the scan loop and answers HTTP requests from the shared state.
@@ -300,6 +313,18 @@ func (s *server) tick(ctx context.Context) {
 			var res engine.WAFResult
 			if res, err = engine.RunWAF(ctx, s.store, opts); err == nil {
 				t.WAF = &res
+				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
+				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
+			}
+		case s.cfg.s3 != nil:
+			opts := s.cfg.s3.Opts
+			opts.Scope.Start, opts.Scope.End = scopeStart, scopeEnd
+			opts.Filter.Since, opts.Filter.Until = since, until
+			opts.Skip = s.state.isSeen
+			opts.Emit = obs.s3Emit()
+			var res engine.S3Result
+			if res, err = engine.RunS3(ctx, s.store, opts); err == nil {
+				t.S3 = &res
 				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
 				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
 			}
@@ -414,6 +439,8 @@ func (s *server) serveReport(w http.ResponseWriter, _ *http.Request) {
 		err = report.HTML(&buf, mergeCT(ticks, s.cfg.ct.Opts.MaxEvents), meta, s.cfg.topN)
 	case s.cfg.waf != nil:
 		err = report.WAFHTML(&buf, mergeWAF(ticks, s.cfg.waf.Opts.MaxEvents, s.cfg.waf.Opts.BlockThreshold), meta, s.cfg.topN)
+	case s.cfg.s3 != nil:
+		err = report.S3HTML(&buf, mergeS3(ticks, s.cfg.s3.Opts.MaxEvents, s.cfg.s3.Opts.Rules()), meta, s.cfg.topN)
 	default:
 		err = report.ELBHTML(&buf, mergeELB(ticks, s.cfg.elb.Opts.MaxEvents), meta, s.cfg.topN)
 	}
@@ -531,5 +558,44 @@ func mergeWAF(ticks []tickResult, maxEvents, blockThreshold int) engine.WAFResul
 		out.Matches = out.Matches[:maxEvents]
 	}
 	out.Findings, out.FindingsDropped = wafrules.Detect(out.Summary, wafrules.Options{BlockThreshold: blockThreshold})
+	return out
+}
+
+// mergeS3 folds the stored S3 ticks into one result, keeping the earliest
+// maxEvents matching requests. Findings are recomputed from the merged
+// summary with s3rules.Detect, so the report reflects every committed tick
+// rather than just the last one.
+func mergeS3(ticks []tickResult, maxEvents int, rules s3rules.Options) engine.S3Result {
+	out := engine.S3Result{Summary: stats.NewS3Summary()}
+	buckets := map[string]bool{}
+	for _, t := range ticks {
+		r := t.S3
+		if r == nil {
+			continue
+		}
+		out.Layout = r.Layout
+		out.Summary.Merge(r.Summary)
+		out.Matches = append(out.Matches, r.Matches...)
+		out.ObjectsScanned += r.ObjectsScanned
+		out.RecordsRead += r.RecordsRead
+		out.MatchedRecords += r.MatchedRecords
+		out.Errors = append(out.Errors, r.Errors...)
+		out.Elapsed += r.Elapsed
+		for _, b := range r.SourceBuckets {
+			buckets[b] = true
+		}
+	}
+	if len(buckets) > 0 {
+		out.SourceBuckets = make([]string, 0, len(buckets))
+		for b := range buckets {
+			out.SourceBuckets = append(out.SourceBuckets, b)
+		}
+		sort.Strings(out.SourceBuckets)
+	}
+	sort.SliceStable(out.Matches, func(i, j int) bool { return out.Matches[i].Time.Before(out.Matches[j].Time) })
+	if len(out.Matches) > maxEvents {
+		out.Matches = out.Matches[:maxEvents]
+	}
+	out.Findings, out.FindingsDropped = s3rules.Detect(out.Summary, rules)
 	return out
 }

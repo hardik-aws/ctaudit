@@ -22,12 +22,14 @@ var (
 	statusClasses = []string{"2xx", "3xx", "4xx", "5xx", "other"}
 )
 
-// tickResult is one committed tick. Exactly one of CT, ELB, and WAF is set.
+// tickResult is one committed tick. Exactly one of CT, ELB, WAF, and S3 is
+// set.
 type tickResult struct {
 	At  time.Time
 	CT  *engine.Result
 	ELB *engine.ELBResult
 	WAF *engine.WAFResult
+	S3  *engine.S3Result
 }
 
 // serveTotals holds the counters that only ever grow.
@@ -51,6 +53,8 @@ type serveTotals struct {
 	handshakeSum   float64
 	handshakeCount int
 	wafByAction    map[string]int
+	s3ByClass      map[string]int
+	s3BytesSent    int64
 }
 
 // serveState is everything serve keeps between ticks: which object keys
@@ -82,6 +86,7 @@ func newServeState(sub string, interval, lookback time.Duration) *serveState {
 			severity:    map[findings.Severity]int{},
 			statusClass: map[string]int{},
 			wafByAction: map[string]int{},
+			s3ByClass:   map[string]int{},
 		},
 	}
 }
@@ -154,6 +159,20 @@ func (s *serveState) commit(now time.Time, t tickResult, readKeys []string, errs
 			for action, n := range sum.ByAction {
 				tot.wafByAction[action] += n
 			}
+		}
+	}
+	if r := t.S3; r != nil {
+		tot.objects += r.ObjectsScanned
+		tot.read += r.RecordsRead
+		tot.matched += r.MatchedRecords
+		for _, f := range r.Findings {
+			tot.severity[f.Severity]++
+		}
+		if sum := r.Summary; sum != nil {
+			for status, n := range sum.ByStatus {
+				tot.s3ByClass[statusClass(status)] += n
+			}
+			tot.s3BytesSent += sum.BytesSent
 		}
 	}
 
@@ -279,6 +298,14 @@ func (s *serveState) metrics() *sink.Metrics {
 		for _, sev := range severities {
 			with("ctaudit_waf_findings_total", "WAF findings raised per scan tick, by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
 		}
+	case "s3":
+		for _, c := range statusClasses {
+			with("ctaudit_s3_requests_total", "Matching requests by S3 status class.", "status_class", c, float64(tot.s3ByClass[c]))
+		}
+		for _, sev := range severities {
+			with("ctaudit_s3_findings_total", "S3 findings raised per scan tick, by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
+		}
+		one("ctaudit_s3_bytes_sent_total", "Bytes sent by matching requests in committed ticks.", float64(tot.s3BytesSent), "counter")
 	}
 
 	if !s.lastScan.IsZero() {

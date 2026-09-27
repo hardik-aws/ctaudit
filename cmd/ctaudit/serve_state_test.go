@@ -196,3 +196,31 @@ func TestServeStateWAFMetrics(t *testing.T) {
 		t.Error("waf state renders ELB families")
 	}
 }
+
+func TestServeStateS3Metrics(t *testing.T) {
+	s := newServeState("s3", time.Minute, time.Hour)
+	sum := stats.NewS3Summary()
+	sum.ByStatus["200"] = 2
+	sum.ByStatus["403"] = 1
+	sum.BytesSent = 42
+	fs := []findings.Finding{{Severity: findings.SevHigh}}
+	s.commit(stateT0, tickResult{S3: &engine.S3Result{
+		Summary: sum, Findings: fs, RecordsRead: 3, MatchedRecords: 3, ObjectsScanned: 1,
+	}}, []string{"x"}, 0, 0)
+
+	text := s.metrics().Text()
+	for _, want := range []string{
+		`ctaudit_s3_requests_total{status_class="2xx",subcommand="s3"} 2`,
+		`ctaudit_s3_requests_total{status_class="4xx",subcommand="s3"} 1`,
+		`ctaudit_s3_requests_total{status_class="5xx",subcommand="s3"} 0`,
+		`ctaudit_s3_findings_total{severity="high",subcommand="s3"} 1`,
+		`ctaudit_s3_bytes_sent_total{subcommand="s3"} 42`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("metrics missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "ctaudit_waf_") {
+		t.Error("s3 state renders WAF families")
+	}
+}

@@ -510,3 +510,75 @@ func TestServeUsageMentionsWAF(t *testing.T) {
 		t.Errorf("serveUsage = %q, missing waf", serveUsage)
 	}
 }
+
+// newTestS3Server parses serve flags for s3 (simple layout) and builds a
+// server over store.
+func newTestS3Server(t *testing.T, store s3src.ObjectStore, clock *fakeClock, extra ...string) (*server, *bytes.Buffer) {
+	t.Helper()
+	args := append([]string{"s3", "--bucket", "b", "--prefix", "logs/", "--accounts", "111122223333", "--regions", "us-east-1"}, extra...)
+	cfg, err := parseServeArgs(args, clock.now(), io.Discard)
+	if err != nil {
+		t.Fatalf("parseServeArgs: %v", err)
+	}
+	var stderr bytes.Buffer
+	return newServer(cfg, store, clock.now, &stderr), &stderr
+}
+
+func TestServeS3TickCommitsAndMetrics(t *testing.T) {
+	objects := map[string][]byte{testS3Key: []byte(strings.Join([]string{s3CleanGet, s3CleanList, s3AnonPut}, "\n") + "\n")}
+	store := &countingStore{MemStore: s3src.NewMemStore(objects)}
+	clock := &fakeClock{t: serveNow}
+	s, stderr := newTestS3Server(t, store, clock)
+
+	s.tick(context.Background())
+	if n := store.gets.Load(); n != 1 {
+		t.Fatalf("first tick Get calls = %d, want 1", n)
+	}
+	if !s.state.isSeen(testS3Key) || !strings.Contains(stderr.String(), "ctaudit serve: s3 tick ok") {
+		t.Fatalf("not committed: %s", stderr.String())
+	}
+	text := s.state.metrics().Text()
+	for _, want := range []string{
+		`ctaudit_s3_requests_total{status_class="2xx",subcommand="s3"} 3`,
+		`ctaudit_s3_findings_total{severity="critical",subcommand="s3"} 1`,
+		`ctaudit_s3_bytes_sent_total{subcommand="s3"} 1000`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("metrics missing %q:\n%s", want, text)
+		}
+	}
+	clock.advance(15 * time.Minute)
+	s.tick(context.Background())
+	if n := store.gets.Load(); n != 1 {
+		t.Fatalf("second tick fetched again: Get calls = %d", n)
+	}
+}
+
+func TestServeS3Report(t *testing.T) {
+	objects := map[string][]byte{testS3Key: []byte(s3CleanGet + "\n" + s3AnonPut + "\n")}
+	clock := &fakeClock{t: serveNow}
+	s, _ := newTestS3Server(t, s3src.NewMemStore(objects), clock, "--requester", "a")
+	s.tick(context.Background())
+	rec := get(t, s.handler(), "/report")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Anonymous write or delete succeeded") {
+		t.Fatalf("status %d:\n%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRunServeS3RejectsFlags(t *testing.T) {
+	for _, flagArgs := range [][]string{
+		{"--since", "2026-09-01"}, {"--until", "2026-09-20"}, {"--html", "x.html"}, {"--pdf", "x.pdf"},
+		{"--pushgateway", "http://p"}, {"--jsonl", "x.jsonl"}, {"--fail-on", "high"},
+	} {
+		args := append([]string{"s3", "--bucket", "b"}, flagArgs...)
+		if _, err := parseServeArgs(args, serveNow, io.Discard); err == nil || !strings.Contains(err.Error(), "not supported by serve") {
+			t.Errorf("%v: err = %v", flagArgs, err)
+		}
+	}
+}
+
+func TestServeUsageMentionsS3(t *testing.T) {
+	if !strings.Contains(serveUsage, "s3") {
+		t.Fatalf("serveUsage = %q", serveUsage)
+	}
+}
