@@ -105,6 +105,10 @@ type commonFlags struct {
 	listWorkers, fetchWorkers int
 	obs                       observeFlags
 	log                       logFlags
+	// scopeOptional, set by a subcommand before resolve, lets --accounts
+	// and --regions be empty. The s3 simple layout has no account or region
+	// in its keys.
+	scopeOptional bool
 }
 
 func (c *commonFlags) register(fs *flag.FlagSet, now time.Time, bucketHelp, prefixHelp string) {
@@ -140,7 +144,7 @@ func (c *commonFlags) resolve(fs *flag.FlagSet) (resolvedScope, error) {
 		return r, errors.New("--bucket is required")
 	}
 	r.accounts = splitList(c.accounts)
-	if len(r.accounts) == 0 {
+	if len(r.accounts) == 0 && !c.scopeOptional {
 		return r, errors.New("--accounts is required")
 	}
 	for _, a := range r.accounts {
@@ -149,7 +153,7 @@ func (c *commonFlags) resolve(fs *flag.FlagSet) (resolvedScope, error) {
 		}
 	}
 	r.regions = splitList(c.regions)
-	if len(r.regions) == 0 {
+	if len(r.regions) == 0 && !c.scopeOptional {
 		return r, errors.New("--regions is required")
 	}
 

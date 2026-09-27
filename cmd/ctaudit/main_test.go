@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,5 +333,44 @@ func TestRunSkipsPDFByDefault(t *testing.T) {
 	}
 	if m, _ := filepath.Glob(filepath.Join(dir, "*.pdf")); len(m) != 0 {
 		t.Errorf("unexpected PDF files: %v", m)
+	}
+}
+
+func TestCommonFlagsScopeOptional(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		optional bool
+		args     []string
+		wantErr  string
+	}{
+		{"accounts required by default", false, []string{"--bucket", "b"}, "--accounts is required"},
+		{"regions required by default", false, []string{"--bucket", "b", "--accounts", "111122223333"}, "--regions is required"},
+		{"optional allows neither", true, []string{"--bucket", "b"}, ""},
+		{"optional still validates accounts", true, []string{"--bucket", "b", "--accounts", "123"}, "not a 12-digit account ID"},
+		{"optional keeps given values", true, []string{"--bucket", "b", "--accounts", "111122223333", "--regions", "us-east-1"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("t", flag.ContinueOnError)
+			fs.SetOutput(io.Discard)
+			var c commonFlags
+			c.register(fs, now, "bucket", "prefix")
+			if err := fs.Parse(tc.args); err != nil {
+				t.Fatal(err)
+			}
+			c.scopeOptional = tc.optional
+			r, err := c.resolve(fs)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.name == "optional keeps given values" && (len(r.accounts) != 1 || len(r.regions) != 1) {
+				t.Fatalf("scope = %+v", r)
+			}
+		})
 	}
 }
