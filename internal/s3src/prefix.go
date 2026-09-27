@@ -25,8 +25,8 @@ type Scope struct {
 	// leading or trailing slashes.
 	BasePrefix string
 	// Service is the log-delivering service path element. Empty means
-	// "CloudTrail"; Elastic Load Balancing access logs use
-	// ServiceELB.
+	// "CloudTrail"; Elastic Load Balancing access logs use ServiceELB, AWS
+	// WAF access logs use ServiceWAF, and VPC Flow Logs use ServiceVPC.
 	Service string
 }
 
@@ -36,6 +36,9 @@ const ServiceELB = "elasticloadbalancing"
 
 // ServiceWAF is the path element under which AWS WAF delivers access logs.
 const ServiceWAF = "WAFLogs"
+
+// ServiceVPC is the path element under which VPC Flow Logs are delivered.
+const ServiceVPC = "vpcflowlogs"
 
 // accountRoot returns "[<base>/]AWSLogs/[<org>/]<account>/".
 func (s Scope) accountRoot(account string) string {
