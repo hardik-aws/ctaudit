@@ -61,7 +61,7 @@
         "additionalProperties": false,
         "properties": {
           "name": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 30},
-          "subcommand": {"type": "string", "enum": ["cloudtrail", "elb", "waf"]},
+          "subcommand": {"type": "string", "enum": ["cloudtrail", "elb", "waf", "s3"]},
           "interval": {"type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(h|m|s))+$"},
           "lookback": {"type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(h|m|s))+$"},
           "bucket": {"type": "string"},

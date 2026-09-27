@@ -32,7 +32,7 @@ loki:
 # two pods would send every line to Loki twice.
 scanners:
   - name: cloudtrail
-    subcommand: cloudtrail  # cloudtrail | elb | waf
+    subcommand: cloudtrail  # cloudtrail | elb | waf | s3
     interval: 15m
     lookback: 24h
     bucket: ""              # overrides aws.bucket
@@ -40,6 +40,7 @@ scanners:
     accounts: []            # overrides aws.accounts
     regions: []             # overrides aws.regions
     args: []                # extra flags, e.g. ["--org-id", "o-abc123"]
+    # s3 scanners: accounts/regions are ignored for the default simple layout; pass ["--prefix", "logs/"] and, for partitioned keys, ["--layout", "partitioned"].
     resources: {}           # overrides the top-level resources
     # debug: true           # overrides the top-level debug
     # logFormat: json       # overrides the top-level logFormat
