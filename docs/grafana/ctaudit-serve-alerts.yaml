@@ -45,6 +45,25 @@ groups:
           summary: "HIGH WAF finding from {{ $labels.pod }}"
           description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
 
+      - alert: CtauditS3CriticalFinding
+        expr: increase(ctaudit_s3_findings_total{job=~".*ctaudit.*",severity="critical"}[30m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL S3 access log finding from {{ $labels.pod }}"
+          description: >-
+            {{ $value | humanize }} critical rule hits in the last 30 minutes.
+            Open /report on the scanner or query Loki with
+            {kind="finding", severity="critical"} | json.
+
+      - alert: CtauditS3HighFinding
+        expr: increase(ctaudit_s3_findings_total{job=~".*ctaudit.*",severity="high"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "HIGH S3 access log finding from {{ $labels.pod }}"
+          description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
+
       - alert: CtauditScanErrors
         expr: increase(ctaudit_scan_errors_total{job=~".*ctaudit.*"}[1h]) > 0
         labels:
