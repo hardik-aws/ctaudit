@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPC Flow Logs {{.Since}} .. {{.Until}}</title>
+<style>{{elbcss}}</style>
+</head>
+<body>
+<header class="topbar">
+<div class="topbar-in">
+<div class="brand">VPC Flow Logs<small>{{.Since}} .. {{.Until}}</small></div>
+<nav aria-label="Sections">
+<a href="#overview">Overview</a>
+<a href="#findings">Findings</a>
+<a href="#hourly">Hourly</a>
+{{if .Tables}}<a href="#breakdown">Breakdown</a>{{end}}
+<a href="#flows">Flows</a>
+{{if .Res.Errors}}<a href="#errors">Errors</a>{{end}}
+</nav>
+</div>
+</header>
+<main>
+
+<section id="overview" aria-labelledby="overview-h">
+<h1 id="overview-h">VPC Flow Logs</h1>
+<dl class="facts">
+<div><dt>Bucket</dt><dd class="mono">{{.Meta.Bucket}}</dd></div>
+<div><dt>Window (UTC)</dt><dd>{{.Since}} .. {{.Until}} · {{.Days}} days</dd></div>
+<div><dt>Accounts</dt><dd class="mono">{{join .Meta.Accounts}}</dd></div>
+<div><dt>Regions</dt><dd>{{join .Meta.Regions}}</dd></div>
+<div><dt>First / last flow</dt><dd>{{ts .Summary.First}} · {{ts .Summary.Last}}</dd></div>
+<div><dt>Scan</dt><dd>{{num .Res.ObjectsScanned}} objects · {{num .Res.RecordsRead}} records</dd></div>
+<div><dt>Matched</dt><dd>{{num .Res.MatchedRecords}} flows</dd></div>
+<div><dt>Status rows</dt><dd>{{num .Summary.NoData}} NODATA · {{num .Summary.SkipData}} SKIPDATA</dd></div>
+<div><dt>Generated</dt><dd>{{.Generated}} · took {{.Elapsed}}</dd></div>
+</dl>
+{{range .Notes}}<p class="note">{{.}}</p>
+{{end}}</section>
+
+<section aria-label="Flow totals">
+<div class="kpis">
+<div class="kpi"><div class="v">{{num .Summary.Flows}}</div><div class="k">Flows</div></div>
+<div class="kpi"><div class="v">{{bytes .Summary.Bytes}}</div><div class="k">Bytes</div></div>
+<div class="kpi"><div class="v">{{num64 .Summary.Packets}}</div><div class="k">Packets</div></div>
+<div class="kpi{{if .Summary.Accepted}} ok{{end}}"><div class="v">{{num .Summary.Accepted}}</div><div class="k">Accepted</div></div>
+<div class="kpi{{if .Summary.Rejected}} crit{{end}}"><div class="v">{{num .Summary.Rejected}}</div><div class="k">Rejected</div></div>
+<div class="kpi{{if .Summary.Rejected}} warn{{end}}"><div class="v">{{.RejectRate}}</div><div class="k">Reject rate</div></div>
+<div class="kpi"><div class="v">{{num .Interfaces}}</div><div class="k">Interfaces</div></div>
+</div>
+</section>
+
+<section id="findings" aria-labelledby="findings-h">
+<h2 id="findings-h">Findings ({{len .Res.Findings}})</h2>
+{{if .Res.Findings}}<div class="panel"><div class="scroll"><table class="data">
+<thead><tr><th>Severity</th><th>Rule</th><th>Title</th><th>Host or source</th><th>Detail</th><th>Time</th></tr></thead>
+<tbody>
+{{range .Res.Findings}}<tr><td><span class="pill {{sevtone .Severity}}">{{.Severity}}</span></td><td class="mono">{{.Rule}}</td><td>{{.Title}}</td><td class="mono">{{dash .Actor}}</td><td class="wrap">{{.Detail}}</td><td class="t">{{ts .Time}}</td></tr>
+{{end}}</tbody>
+</table></div></div>{{else}}<p class="empty">No findings.</p>{{end}}
+{{if .Res.FindingsDropped}}<p class="note">{{num .Res.FindingsDropped}} more findings not shown.</p>{{end}}
+</section>
+
+<section id="hourly" aria-labelledby="hourly-h">
+<h2 id="hourly-h">Flows over time <span class="sub">UTC · by flow start · hover a bar for the per-action split</span></h2>
+<div class="panel chart">
+<div class="hours" role="img" aria-label="Flows per hour">
+{{range .Hours}}<div class="hour" title="{{.Key}} — {{.Title}}"><span class="tip">{{.Key}} · {{num .Count}}</span><div class="col" style="height:{{.Pct}}%"></div></div>
+{{end}}</div>
+</div>
+</section>
+
+{{if .Tables}}<section id="breakdown" aria-labelledby="breakdown-h">
+<h2 id="breakdown-h">Traffic breakdown <span class="sub">top values by flows or bytes</span></h2>
+<div class="grid">
+{{range .Tables}}{{template "rank" .}}
+{{end}}</div>
+</section>{{end}}
+
+<section id="flows" aria-labelledby="flows-h">
+{{if .Meta.Narrowed}}<h2 id="flows-h">Matching flows (showing {{len .Matches}} of {{num .Res.MatchedRecords}}, earliest first)</h2>
+<div class="panel">
+{{if .Matches}}<div class="tools">
+<input type="search" id="vpc-filter" data-filter="vpc-table" placeholder="Filter rows: address, port, interface…" aria-label="Filter flows">
+<span class="count" data-count="vpc-table" aria-live="polite"></span>
+</div>
+<div class="scroll"><table class="data" id="vpc-table">
+<thead><tr><th>Start</th><th>Interface</th><th>Action</th><th>Source</th><th>Src port</th><th>Destination</th><th>Dst port</th><th>Protocol</th><th>Packets</th><th>Bytes</th><th>Direction</th><th>VPC</th><th>Reject reason</th></tr></thead>
+<tbody>
+{{range .Matches}}<tr><td class="t">{{ts .Start}}</td><td class="mono">{{dash .InterfaceID}}</td><td>{{template "val" .Action}}</td><td class="mono">{{addr .Source}}</td><td class="mono">{{port .SrcPort}}</td><td class="mono">{{addr .Dest}}</td><td class="mono">{{port .DstPort}}</td><td>{{dash .ProtocolName}}</td><td>{{num64 .Packets}}</td><td>{{bytes .Bytes}}</td><td>{{dash .FlowDirection}}</td><td class="mono">{{dash .VPCID}}</td><td>{{dash .RejectReason}}</td></tr>
+{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">No matching flows in this window.</p>{{end}}
+</div>
+{{else}}<h2 id="flows-h">Matching flows</h2>
+<p class="note">Add a narrowing filter (--action, --src-cidr, --dst-cidr, --ports, --protocol, --interfaces, or --vpcs) to show the matching flows table.</p>
+{{end}}
+</section>
+
+{{if .Res.Errors}}<section id="errors" aria-label="Errors">
+<details class="panel errors">
+<summary>Errors ({{len .Res.Errors}}) <span class="sub">objects or lines that could not be read</span></summary>
+<ul>{{range .Res.Errors}}<li class="mono">{{.}}</li>{{end}}</ul>
+</details>
+</section>{{end}}
+
+<p class="note">Tip: click a column header to sort; use the filter box to narrow rows (space-separated terms must all match).</p>
+</main>
+<script>{{elbjs}}</script>
+</body>
+</html>
+{{define "val"}}{{$t := tone .}}{{if $t}}<span class="pill {{$t}}">{{.}}</span>{{else}}{{dash .}}{{end}}{{end}}
+{{define "rank"}}<div class="panel">
+<div class="panel-head"><h3>{{.Title}}</h3><span class="sub">{{len .Rows}} shown</span></div>
+<table class="rank">
+<thead><tr><th scope="col">{{.KeyHeader}}</th><th scope="col" class="cnt">{{if .Bytes}}Bytes{{else}}Flows{{end}}</th><th scope="col"><span class="sr">share</span></th></tr></thead>
+<colgroup><col><col style="width:84px"><col style="width:26%"></colgroup>
+<tbody>
+{{range .Rows}}<tr title="{{.Key}}"><td class="key mono">{{$t := atone .Key}}{{if $t}}<span class="pill {{$t}}">{{.Key}}</span>{{else}}{{dash .Key}}{{end}}</td><td class="cnt">{{if $.Bytes}}{{bytesn .Count}}{{else}}{{num .Count}}{{end}}</td><td class="meter"><i style="width:{{.Pct}}%"></i></td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}
