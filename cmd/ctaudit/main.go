@@ -45,7 +45,8 @@ Commands:
   elb          scan Elastic Load Balancing access logs (alias: alb)
   waf          scan AWS WAF logs
   s3           scan Amazon S3 server access logs
-  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb|waf|s3)
+  vpc          scan VPC Flow Logs (text format)
+  serve        run a scanner loop with /metrics for Kubernetes (serve cloudtrail|elb|waf|s3|vpc)
 
 Run "ctaudit <command> -h" for the flags of a command.
 `
@@ -87,6 +88,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, newStore 
 		return runWAF(ctx, args[1:], stdout, stderr, newStore, now)
 	case "s3":
 		return runS3(ctx, args[1:], stdout, stderr, newStore, now)
+	case "vpc":
+		return runVPC(ctx, args[1:], stdout, stderr, newStore, now)
 	case "serve":
 		return runServe(ctx, args[1:], stdout, stderr, newStore, time.Now)
 	case "-h", "-help", "--help", "help":

@@ -79,7 +79,7 @@ func renderS3PDF(res engine.S3Result, meta Meta, topN int) (*pdfDoc, error) {
 				continue
 			}
 			if s3ByteTableTitles[t.title] {
-				d.table(bytesPDFTable(t.htmlTitle, t.htmlKey, pairs))
+				d.table(bytesPDFTable(t.htmlTitle, t.htmlKey, pairs, 0))
 			} else {
 				d.table(rankedPDFTable(t.htmlTitle, t.htmlKey, "Requests", pairs, sum.Total))
 			}
@@ -88,22 +88,4 @@ func renderS3PDF(res engine.S3Result, meta Meta, topN int) (*pdfDoc, error) {
 
 	d.errorList(res.Errors)
 	return d, d.err
-}
-
-// bytesPDFTable is rankedPDFTable's counterpart for the two byte-count
-// tables: it formats the count column with humanBytes instead of
-// groupDigits, and leaves out the percentage column since the total is a
-// request count, not a byte count.
-func bytesPDFTable(title, keyHeader string, pairs []stats.Pair) pdfTable {
-	t := pdfTable{
-		Title: title,
-		Columns: []pdfColumn{
-			{Header: keyHeader, Width: 0.75},
-			{Header: "Bytes", Width: 0.25, Right: true},
-		},
-	}
-	for _, p := range pairs {
-		t.Rows = append(t.Rows, []string{p.Key, humanBytes(int64(p.Count))})
-	}
-	return t
 }

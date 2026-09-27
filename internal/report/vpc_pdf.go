@@ -99,21 +99,28 @@ func renderVPCPDF(res engine.VPCResult, meta Meta, topN int) (*pdfDoc, error) {
 	return d, d.err
 }
 
-// bytesPDFTable is rankedPDFTable for byte counts.
+// bytesPDFTable is rankedPDFTable for byte counts: the count column is
+// formatted with humanBytes. The percentage column is shown only when total
+// is a byte total (> 0); S3 passes 0 because its total is a request count.
 func bytesPDFTable(title, keyHeader string, pairs []stats.Pair, total int64) pdfTable {
-	t := pdfTable{
-		Title: title,
-		Columns: []pdfColumn{
-			{Header: keyHeader, Width: 0.70},
-			{Header: "Bytes", Width: 0.18, Right: true},
-			{Header: "%", Width: 0.12, Right: true},
-		},
+	t := pdfTable{Title: title}
+	if total <= 0 {
+		t.Columns = []pdfColumn{
+			{Header: keyHeader, Width: 0.75},
+			{Header: "Bytes", Width: 0.25, Right: true},
+		}
+		for _, p := range pairs {
+			t.Rows = append(t.Rows, []string{p.Key, humanBytes(int64(p.Count))})
+		}
+		return t
+	}
+	t.Columns = []pdfColumn{
+		{Header: keyHeader, Width: 0.70},
+		{Header: "Bytes", Width: 0.18, Right: true},
+		{Header: "%", Width: 0.12, Right: true},
 	}
 	for _, p := range pairs {
-		pct := ""
-		if total > 0 {
-			pct = fmt.Sprintf("%.1f", float64(p.Count)*100/float64(total))
-		}
+		pct := fmt.Sprintf("%.1f", float64(p.Count)*100/float64(total))
 		t.Rows = append(t.Rows, []string{p.Key, humanBytes(int64(p.Count)), pct})
 	}
 	return t
