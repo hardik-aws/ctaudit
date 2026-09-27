@@ -27,7 +27,12 @@ type scanSpec[T, S any] struct {
 	// decode turns one object into records. It may return records together
 	// with an error (e.g. some lines were unparseable); the error is recorded
 	// and the records are still visited.
-	decode   func(key string, r io.Reader) ([]T, error)
+	decode func(key string, r io.Reader) ([]T, error)
+	// stream, when set, replaces decode: it calls emit for each record as
+	// it is decoded, so a large object's records are never held in memory
+	// together. An object that emitted records before failing counts as
+	// read, and its error is still recorded.
+	stream   func(key string, r io.Reader, emit func(T)) error
 	newShard func() S
 	// visit folds one record into a shard and reports whether it matched
 	// the filters.
@@ -158,6 +163,32 @@ func scan[T, S any](ctx context.Context, store s3src.ObjectStore, spec scanSpec[
 					return
 				}
 				started := time.Now()
+				if spec.stream != nil {
+					recs, matched := 0, 0
+					size, err := fetchStream(ctx, store, key, spec.stream, func(rec T) {
+						recs++
+						if spec.visit(w.shard, rec) {
+							matched++
+						}
+					})
+					if err != nil {
+						if spec.log != nil {
+							spec.log.Debug("object failed", "key", key, "bytes", size, "records", recs, "dur", time.Since(started), "err", err)
+						}
+						if len(w.errs) < maxRecordedErrors {
+							w.errs = append(w.errs, err.Error())
+						}
+					}
+					if recs > 0 || err == nil {
+						w.readKeys = append(w.readKeys, key)
+						w.objectsScanned++
+						w.recordsRead += recs
+					}
+					if spec.log != nil && err == nil {
+						spec.log.Debug("object read", "key", key, "bytes", size, "records", recs, "matched", matched, "dur", time.Since(started))
+					}
+					continue
+				}
 				recs, size, err := fetchDecode(ctx, store, key, spec.decode)
 				if err != nil && spec.log != nil {
 					spec.log.Debug("object failed", "key", key, "bytes", size, "records", len(recs), "dur", time.Since(started), "err", err)
@@ -232,4 +263,20 @@ func fetchDecode[T any](ctx context.Context, store s3src.ObjectStore, key string
 		return recs, cr.n, fmt.Errorf("decode %s: %w", key, err)
 	}
 	return recs, cr.n, nil
+}
+
+// fetchStream reads one object through stream, calling emit per record. It
+// also returns how many compressed bytes were read.
+func fetchStream[T any](ctx context.Context, store s3src.ObjectStore, key string, stream func(string, io.Reader, func(T)) error, emit func(T)) (int64, error) {
+	rc, err := store.Get(ctx, key)
+	if err != nil {
+		return 0, fmt.Errorf("get %s: %w", key, err)
+	}
+	defer rc.Close()
+
+	cr := &countingReader{r: rc}
+	if err := stream(key, cr, emit); err != nil {
+		return cr.n, fmt.Errorf("decode %s: %w", key, err)
+	}
+	return cr.n, nil
 }
