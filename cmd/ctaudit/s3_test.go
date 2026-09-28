@@ -25,6 +25,10 @@ var (
 	s3DeniedA   = s3TestLine("20/Sep/2026:10:17:00", "192.0.2.50", "arn:aws:iam::111122223333:user/bob", "REST.GET.OBJECT", "s.env", 403, "AccessDenied", 243)
 	s3DeniedB   = s3TestLine("20/Sep/2026:10:17:05", "192.0.2.50", "arn:aws:iam::111122223333:user/bob", "REST.GET.OBJECT", "t.env", 403, "AccessDenied", 243)
 	s3AnonPut   = s3TestLine("20/Sep/2026:10:18:00", "192.0.2.44", "-", "REST.PUT.OBJECT", "x.php", 200, "-", 0)
+	// s3NoStatus has a "-" http_status field, as S3 logs for some malformed
+	// or abandoned requests: Status is 0 and it is missing from ByStatus.
+	s3NoStatus = fmt.Sprintf(`79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be data-bucket [%s +0000] %s %s 3E57427F3EXAMPLE %s %s "GET /%s HTTP/1.1" - %s %d - 10 9 "-" "aws-cli/2.17.0" - hostIdSECRET= SigV4 ECDHE-RSA-AES128-GCM-SHA256 AuthHeader data-bucket.s3.us-east-1.amazonaws.com TLSv1.2 - -`,
+		"20/Sep/2026:10:19:00", "192.0.2.60", "-", "REST.GET.OBJECT", "u.txt", "u.txt", "-", 0)
 )
 
 // s3Store serves lines as one plain-text object under testS3Key.

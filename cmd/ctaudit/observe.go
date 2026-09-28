@@ -314,9 +314,14 @@ func s3Metrics(res engine.S3Result) func(*sink.Metrics) {
 		classes := map[string]int{}
 		var sent int64
 		if sum := res.Summary; sum != nil {
+			counted := 0
 			for status, n := range sum.ByStatus {
 				classes[statusClass(status)] += n
+				counted += n
 			}
+			// Status-less ("-") requests never reach ByStatus, so they would
+			// otherwise be missing from every class instead of "other".
+			classes["other"] += sum.Total - counted
 			sent = sum.BytesSent
 		}
 		for _, c := range statusClasses {

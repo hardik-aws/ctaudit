@@ -169,9 +169,14 @@ func (s *serveState) commit(now time.Time, t tickResult, readKeys []string, errs
 			tot.severity[f.Severity]++
 		}
 		if sum := r.Summary; sum != nil {
+			counted := 0
 			for status, n := range sum.ByStatus {
 				tot.s3ByClass[statusClass(status)] += n
+				counted += n
 			}
+			// Status-less ("-") requests never reach ByStatus, so they would
+			// otherwise be missing from every class instead of "other".
+			tot.s3ByClass["other"] += sum.Total - counted
 			tot.s3BytesSent += sum.BytesSent
 		}
 	}

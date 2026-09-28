@@ -173,7 +173,7 @@ func TestRunWAFPushesMetrics(t *testing.T) {
 func TestRunS3PushesMetrics(t *testing.T) {
 	var pg fakePushgateway
 	srv := pg.server(t)
-	code, _, stderr := runS3Args(t, s3Store(t, s3CleanGet, s3AnonPut),
+	code, _, stderr := runS3Args(t, s3Store(t, s3CleanGet, s3AnonPut, s3NoStatus),
 		"--html", "", "--fail-on", "none", "--pushgateway", srv.URL)
 	if code != exitOK {
 		t.Fatalf("exit = %d, stderr = %s", code, stderr)
@@ -183,6 +183,7 @@ func TestRunS3PushesMetrics(t *testing.T) {
 	}
 	for _, want := range []string{
 		`ctaudit_s3_requests{status_class="2xx"} 2`,
+		`ctaudit_s3_requests{status_class="other"} 1`,
 		`ctaudit_s3_findings{severity="critical"} 1`,
 		"ctaudit_s3_bytes_sent 100",
 	} {

@@ -203,6 +203,9 @@ func TestServeStateS3Metrics(t *testing.T) {
 	sum.ByStatus["200"] = 2
 	sum.ByStatus["403"] = 1
 	sum.BytesSent = 42
+	// One status-less ("-") request: counted in Total but not in ByStatus,
+	// same as a real S3 log line with a missing http_status field.
+	sum.Total = 4
 	fs := []findings.Finding{{Severity: findings.SevHigh}}
 	s.commit(stateT0, tickResult{S3: &engine.S3Result{
 		Summary: sum, Findings: fs, RecordsRead: 3, MatchedRecords: 3, ObjectsScanned: 1,
@@ -213,6 +216,7 @@ func TestServeStateS3Metrics(t *testing.T) {
 		`ctaudit_s3_requests_total{status_class="2xx",subcommand="s3"} 2`,
 		`ctaudit_s3_requests_total{status_class="4xx",subcommand="s3"} 1`,
 		`ctaudit_s3_requests_total{status_class="5xx",subcommand="s3"} 0`,
+		`ctaudit_s3_requests_total{status_class="other",subcommand="s3"} 1`,
 		`ctaudit_s3_findings_total{severity="high",subcommand="s3"} 1`,
 		`ctaudit_s3_bytes_sent_total{subcommand="s3"} 42`,
 	} {
