@@ -20,6 +20,7 @@ const (
 // s3Root is the target prefix server access logging writes under. S3
 // appends the rest of the key to it directly, without a "/", so it is used
 // verbatim; only a leading "/" is dropped, since keys never start with one.
+// Unlike accountRoot, a trailing slash (or its absence) is preserved.
 func (s Scope) s3Root() string {
 	return strings.TrimLeft(s.BasePrefix, "/")
 }
