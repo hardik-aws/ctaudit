@@ -143,6 +143,18 @@ func TestParseRejectsBadLines(t *testing.T) {
 	}
 }
 
+func TestParseErrorsNeverEchoFieldContent(t *testing.T) {
+	const secretTime = "not-a-real-timestamp-marker"
+	line := owner + ` b [` + secretTime + `] 1.2.3.4 - id REST.GET.OBJECT k "GET / HTTP/1.1" 200`
+	_, err := Parse(line)
+	if err == nil {
+		t.Fatalf("Parse(%q) succeeded", line)
+	}
+	if strings.Contains(err.Error(), secretTime) {
+		t.Errorf("error echoes raw field content: %v", err)
+	}
+}
+
 func TestDecodePlainGzipAndBadLine(t *testing.T) {
 	body := anonGet + "\r\nnot a log line\n\n" + denied + "\n"
 	got, err := Decode("logs/2026-09-20-10-15-02-A1B2C3D4E5F6A7B8", strings.NewReader(body))

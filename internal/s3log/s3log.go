@@ -102,7 +102,7 @@ func Parse(line string) (Entry, error) {
 	}
 	t, err := time.Parse(timeLayout, f[fTime])
 	if err != nil {
-		return Entry{}, fmt.Errorf("bad time %q", f[fTime])
+		return Entry{}, errors.New("bad time field")
 	}
 	get := func(i int) string {
 		if i < len(f) && f[i] != "-" {
