@@ -72,6 +72,27 @@ func TestS3Terminal(t *testing.T) {
 			t.Errorf("terminal missing %q:\n%s", want, out)
 		}
 	}
+	// The fixture uses the simple layout, so SourceBuckets is nil, but one
+	// bucket was logged; the source bucket count must fall back to it
+	// instead of showing 0.
+	if !strings.Contains(out, "Source buckets: 1") {
+		t.Errorf("terminal source bucket count did not fall back to ByBucket:\n%s", out)
+	}
+}
+
+func TestS3SourceBucketCount(t *testing.T) {
+	if n := s3SourceBucketCount(engine.S3Result{}); n != 0 {
+		t.Errorf("nil result: got %d, want 0", n)
+	}
+	res, _ := s3Fixture()
+	res.SourceBuckets = nil
+	if n := s3SourceBucketCount(res); n != len(res.Summary.ByBucket) {
+		t.Errorf("simple layout fallback: got %d, want %d", n, len(res.Summary.ByBucket))
+	}
+	res.SourceBuckets = []string{"a", "b"}
+	if n := s3SourceBucketCount(res); n != 2 {
+		t.Errorf("partitioned layout: got %d, want 2", n)
+	}
 }
 
 func TestS3PDF(t *testing.T) {

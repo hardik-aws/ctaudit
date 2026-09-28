@@ -65,6 +65,20 @@ func s3RankedTables(s *stats.S3Summary) []rankedTable {
 // a count with humanBytes.
 const s3TerminalTables = 6
 
+// s3SourceBucketCount reports how many source buckets fed the result. The
+// partitioned layout discovers and lists them in SourceBuckets; the simple
+// layout never populates it, so this falls back to the distinct buckets
+// actually logged.
+func s3SourceBucketCount(res engine.S3Result) int {
+	if len(res.SourceBuckets) > 0 {
+		return len(res.SourceBuckets)
+	}
+	if res.Summary == nil {
+		return 0
+	}
+	return len(res.Summary.ByBucket)
+}
+
 // S3Terminal writes the plain-text S3 access log report.
 func S3Terminal(w io.Writer, res engine.S3Result, meta Meta, topN int) error {
 	sum := res.Summary
@@ -78,7 +92,7 @@ func S3Terminal(w io.Writer, res engine.S3Result, meta Meta, topN int) error {
 	p("Amazon S3 Access Logs — %s .. %s (%d days)\n",
 		meta.Since.Format(dayLayout), meta.Until.Format(dayLayout), meta.Days())
 	p("Bucket: %s   Layout: %s   Source buckets: %s\n",
-		clean(meta.Bucket), clean(res.Layout), groupDigits(len(res.SourceBuckets)))
+		clean(meta.Bucket), clean(res.Layout), groupDigits(s3SourceBucketCount(res)))
 	p("Objects scanned: %s   Records read: %s   Matched: %s   Elapsed: %s\n",
 		groupDigits(res.ObjectsScanned), groupDigits(res.RecordsRead),
 		groupDigits(res.MatchedRecords), formatElapsed(res.Elapsed))

@@ -24,7 +24,7 @@ func renderS3PDF(res engine.S3Result, meta Meta, topN int) (*pdfDoc, error) {
 	d.heading("Traffic")
 	d.kv([][2]string{
 		{"Layout", dashIfEmpty(res.Layout)},
-		{"Source buckets", groupDigits(len(res.SourceBuckets))},
+		{"Source buckets", groupDigits(s3SourceBucketCount(res))},
 		{"Objects scanned", groupDigits(res.ObjectsScanned)},
 		{"Records read", groupDigits(res.RecordsRead)},
 		{"Matched records", groupDigits(res.MatchedRecords)},
