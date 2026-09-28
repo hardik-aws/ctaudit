@@ -31,7 +31,7 @@ const (
 	maxLookback     = 720 * time.Hour
 	shutdownGrace   = 10 * time.Second
 	reportCSP       = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
-	serveUsage      = "usage: ctaudit serve cloudtrail|elb|waf|s3 [flags]"
+	serveUsage      = "usage: ctaudit serve cloudtrail|elb|waf|s3|vpc [flags]"
 	day             = 24 * time.Hour
 	metricsMIMEType = "text/plain; version=0.0.4; charset=utf-8"
 )
@@ -40,9 +40,9 @@ const (
 // server. They are rejected only when set explicitly.
 var serveRejected = []string{"since", "until", "html", "pdf", "pushgateway", "jsonl", "fail-on"}
 
-// serveConfig is the parsed serve command line. Exactly one of ct, elb, waf,
-// and s3 is set; their scope days and filter window are replaced on every
-// tick.
+// serveConfig is the parsed serve command line. Exactly one of ct, elb,
+// waf, s3, and vpc is set; their scope days and filter window are replaced
+// on every tick.
 type serveConfig struct {
 	sub      string
 	interval time.Duration
@@ -57,6 +57,7 @@ type serveConfig struct {
 	elb      *elbConfig
 	waf      *wafConfig
 	s3       *s3Config
+	vpc      *vpcConfig
 }
 
 func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig, error) {
@@ -99,6 +100,13 @@ func parseServeArgs(args []string, now time.Time, usage io.Writer) (serveConfig,
 			return serveConfig{}, err
 		}
 		sc.sub, sc.s3, set = "s3", &cfg, s
+		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
+	case "vpc":
+		cfg, s, err := parseVPCArgsFlags(args[1:], now, usage, extra)
+		if err != nil {
+			return serveConfig{}, err
+		}
+		sc.sub, sc.vpc, set = "vpc", &cfg, s
 		sc.store, sc.topN, sc.observe, sc.meta, sc.log = cfg.Store, cfg.TopN, cfg.Observe, cfg.Meta, cfg.Log
 	default:
 		return serveConfig{}, fmt.Errorf("unknown serve subcommand %q; %s", args[0], serveUsage)
@@ -222,6 +230,9 @@ func (c *serveConfig) setLogger(log *slog.Logger) {
 	if c.s3 != nil {
 		c.s3.Opts.Debug = log
 	}
+	if c.vpc != nil {
+		c.vpc.Opts.Debug = log
+	}
 }
 
 // server runs the scan loop and answers HTTP requests from the shared state.
@@ -325,6 +336,18 @@ func (s *server) tick(ctx context.Context) {
 			var res engine.S3Result
 			if res, err = engine.RunS3(ctx, s.store, opts); err == nil {
 				t.S3 = &res
+				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
+				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
+			}
+		case s.cfg.vpc != nil:
+			opts := s.cfg.vpc.Opts
+			opts.Scope.Start, opts.Scope.End = scopeStart, scopeEnd
+			opts.Filter.Since, opts.Filter.Until = since, until
+			opts.Skip = s.state.isSeen
+			opts.Emit = obs.vpcEmit(s.cfg.vpc.EmitFlows)
+			var res engine.VPCResult
+			if res, err = engine.RunVPC(ctx, s.store, opts); err == nil {
+				t.VPC = &res
 				keys, fs, errs = res.ReadKeys, res.Findings, len(res.Errors)
 				objects, read, matched = res.ObjectsScanned, res.RecordsRead, res.MatchedRecords
 			}
@@ -441,6 +464,8 @@ func (s *server) serveReport(w http.ResponseWriter, _ *http.Request) {
 		err = report.WAFHTML(&buf, mergeWAF(ticks, s.cfg.waf.Opts.MaxEvents, s.cfg.waf.Opts.BlockThreshold), meta, s.cfg.topN)
 	case s.cfg.s3 != nil:
 		err = report.S3HTML(&buf, mergeS3(ticks, s.cfg.s3.Opts.MaxEvents, s.cfg.s3.Opts.Rules()), meta, s.cfg.topN)
+	case s.cfg.vpc != nil:
+		err = report.VPCHTML(&buf, mergeVPC(ticks, s.cfg.vpc.Opts.MaxEvents, s.cfg.vpc.Opts.Rules), meta, s.cfg.topN)
 	default:
 		err = report.ELBHTML(&buf, mergeELB(ticks, s.cfg.elb.Opts.MaxEvents), meta, s.cfg.topN)
 	}

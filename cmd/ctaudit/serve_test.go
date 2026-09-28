@@ -174,10 +174,10 @@ func TestRunServeBadDurations(t *testing.T) {
 
 func TestRunServeUnknownSubcommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := run(context.Background(), []string{"serve", "vpc"}, &stdout, &stderr, elbStore(t), serveNow); code != exitFailed {
+	if code := run(context.Background(), []string{"serve", "nope"}, &stdout, &stderr, elbStore(t), serveNow); code != exitFailed {
 		t.Fatalf("exit = %d, want %d", code, exitFailed)
 	}
-	if !strings.Contains(stderr.String(), "serve cloudtrail|elb|waf") {
+	if !strings.Contains(stderr.String(), "serve cloudtrail|elb|waf|s3|vpc") {
 		t.Errorf("stderr missing usage: %s", stderr.String())
 	}
 }

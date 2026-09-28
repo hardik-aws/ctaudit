@@ -32,7 +32,7 @@ loki:
 # two pods would send every line to Loki twice.
 scanners:
   - name: cloudtrail
-    subcommand: cloudtrail  # cloudtrail | elb | waf | s3
+    subcommand: cloudtrail  # cloudtrail | elb | waf | s3 | vpc
     interval: 15m
     lookback: 24h
     bucket: ""              # overrides aws.bucket

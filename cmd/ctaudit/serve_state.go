@@ -22,14 +22,15 @@ var (
 	statusClasses = []string{"2xx", "3xx", "4xx", "5xx", "other"}
 )
 
-// tickResult is one committed tick. Exactly one of CT, ELB, WAF, and S3 is
-// set.
+// tickResult is one committed tick. Exactly one of CT, ELB, WAF, S3, and
+// VPC is set.
 type tickResult struct {
 	At  time.Time
 	CT  *engine.Result
 	ELB *engine.ELBResult
 	WAF *engine.WAFResult
 	S3  *engine.S3Result
+	VPC *engine.VPCResult
 }
 
 // serveTotals holds the counters that only ever grow.
@@ -55,6 +56,9 @@ type serveTotals struct {
 	wafByAction    map[string]int
 	s3ByClass      map[string]int
 	s3BytesSent    int64
+	vpcByAction    map[string]int
+	vpcBytes       int64
+	vpcPackets     int64
 }
 
 // serveState is everything serve keeps between ticks: which object keys
@@ -87,6 +91,7 @@ func newServeState(sub string, interval, lookback time.Duration) *serveState {
 			statusClass: map[string]int{},
 			wafByAction: map[string]int{},
 			s3ByClass:   map[string]int{},
+			vpcByAction: map[string]int{},
 		},
 	}
 }
@@ -178,6 +183,21 @@ func (s *serveState) commit(now time.Time, t tickResult, readKeys []string, errs
 			// otherwise be missing from every class instead of "other".
 			tot.s3ByClass["other"] += sum.Total - counted
 			tot.s3BytesSent += sum.BytesSent
+		}
+	}
+	if v := t.VPC; v != nil {
+		tot.objects += v.ObjectsScanned
+		tot.read += v.RecordsRead
+		tot.matched += v.MatchedRecords
+		for _, f := range v.Findings {
+			tot.severity[f.Severity]++
+		}
+		if sum := v.Summary; sum != nil {
+			for action, n := range sum.ByAction {
+				tot.vpcByAction[action] += n
+			}
+			tot.vpcBytes += sum.Bytes
+			tot.vpcPackets += sum.Packets
 		}
 	}
 
@@ -311,6 +331,15 @@ func (s *serveState) metrics() *sink.Metrics {
 			with("ctaudit_s3_findings_total", "S3 findings raised per scan tick, by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
 		}
 		one("ctaudit_s3_bytes_sent_total", "Bytes sent by matching requests in committed ticks.", float64(tot.s3BytesSent), "counter")
+	case "vpc":
+		for _, a := range vpcActions {
+			with("ctaudit_vpc_flows_total", "Matching flows by action.", "action", a, float64(tot.vpcByAction[a]))
+		}
+		one("ctaudit_vpc_bytes_total", "Bytes in matching flows.", float64(tot.vpcBytes), "counter")
+		one("ctaudit_vpc_packets_total", "Packets in matching flows.", float64(tot.vpcPackets), "counter")
+		for _, sev := range severities {
+			with("ctaudit_vpc_findings_total", "VPC findings raised per scan tick, by severity.", "severity", strings.ToLower(sev.String()), float64(tot.severity[sev]))
+		}
 	}
 
 	if !s.lastScan.IsZero() {

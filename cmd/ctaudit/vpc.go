@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/report"
 	"github.com/gsmappdev/ctaudit/internal/s3src"
 	"github.com/gsmappdev/ctaudit/internal/sink"
+	"github.com/gsmappdev/ctaudit/internal/stats"
 	"github.com/gsmappdev/ctaudit/internal/vpcrules"
 )
 
@@ -340,4 +342,33 @@ func vpcMetrics(res engine.VPCResult) func(*sink.Metrics) {
 				strings.ToLower(sev.String()), float64(counts[sev]))
 		}
 	}
+}
+
+// mergeVPC folds the stored VPC ticks into one result, keeping the earliest
+// maxEvents flows, and re-runs the rules over the merged summary so /report
+// sees thresholds crossed across ticks. Each tick's summary is already
+// bounded, and the merge keeps the caps.
+func mergeVPC(ticks []tickResult, maxEvents int, rules vpcrules.Options) engine.VPCResult {
+	out := engine.VPCResult{Summary: stats.NewVPCSummary(rules.Limits())}
+	for _, t := range ticks {
+		r := t.VPC
+		if r == nil {
+			continue
+		}
+		if r.Summary != nil {
+			out.Summary.Merge(r.Summary)
+		}
+		out.Matches = append(out.Matches, r.Matches...)
+		out.ObjectsScanned += r.ObjectsScanned
+		out.RecordsRead += r.RecordsRead
+		out.MatchedRecords += r.MatchedRecords
+		out.Errors = append(out.Errors, r.Errors...)
+		out.Elapsed += r.Elapsed
+	}
+	sort.SliceStable(out.Matches, func(i, j int) bool { return out.Matches[i].Start.Before(out.Matches[j].Start) })
+	if len(out.Matches) > maxEvents {
+		out.Matches = out.Matches[:maxEvents]
+	}
+	out.Findings, out.FindingsDropped = vpcrules.Detect(out.Summary, rules)
+	return out
 }
