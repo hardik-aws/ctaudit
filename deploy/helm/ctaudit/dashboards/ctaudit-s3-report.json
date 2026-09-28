@@ -297,7 +297,7 @@
             "type": "loki",
             "uid": "${loki}"
           },
-          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"s3\", kind=\"request\", bucket=~\"$bucket\", status_class=~\"$status_class\"} | json requester=\"requester\", remote_ip=\"remote_ip\" | __error__=\"\" | requester=~\"$requester\" | remote_ip=~\"$remote_ip\" | status_class=~\"4xx|5xx\" [$__range]))",
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"s3\", kind=\"request\", bucket=~\"$bucket\", status_class=~\"$status_class\"} | json requester=\"requester\", remote_ip=\"remote_ip\" | __error__=\"\" | requester=~\"$requester\" | remote_ip=~\"$remote_ip\" | json error_code=\"error_code\" | status_class=~\"4xx|5xx\" or error_code!=\"\" [$__range]))",
           "queryType": "instant"
         }
       ],
@@ -359,7 +359,7 @@
             "type": "loki",
             "uid": "${loki}"
           },
-          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"s3\", kind=\"request\", bucket=~\"$bucket\", status_class=~\"$status_class\"} | json requester=\"requester\", remote_ip=\"remote_ip\" | __error__=\"\" | requester=~\"$requester\" | remote_ip=~\"$remote_ip\" | json status=\"status\" | status=\"403\" [$__range]))",
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"s3\", kind=\"request\", bucket=~\"$bucket\", status_class=~\"$status_class\"} | json requester=\"requester\", remote_ip=\"remote_ip\" | __error__=\"\" | requester=~\"$requester\" | remote_ip=~\"$remote_ip\" | json status=\"status\", error_code=\"error_code\" | status=\"403\" or error_code=\"AccessDenied\" [$__range]))",
           "queryType": "instant"
         }
       ],
