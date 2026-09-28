@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +15,30 @@ import (
 	"github.com/gsmappdev/ctaudit/internal/s3src"
 	"github.com/gsmappdev/ctaudit/internal/vpcrules"
 )
+
+// truncatedGzip gzips prefix and flushes it as a complete, self-contained
+// deflate block, then writes rest but returns only the bytes up to the
+// flush point. The result decodes prefix in full and then fails with an
+// I/O error (not a *flowlog.LineError) when the reader looks for more.
+func truncatedGzip(t *testing.T, prefix, rest string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(prefix)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatalf("gzip flush: %v", err)
+	}
+	cut := buf.Len()
+	if _, err := zw.Write([]byte(rest)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.Bytes()[:cut]
+}
 
 const (
 	vpcAcct   = "111122223333"
@@ -159,9 +186,6 @@ func TestRunVPCIdleTickSkipsHiveProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("idle tick returned an error: %v", err)
 	}
-	if errors.Is(err, ErrHiveLayout) {
-		t.Fatal("idle tick must not trigger the Hive-layout probe")
-	}
 	if res.ObjectsScanned != 0 {
 		t.Fatalf("objects scanned = %d, want 0", res.ObjectsScanned)
 	}
@@ -187,5 +211,56 @@ func TestRunVPCFindings(t *testing.T) {
 	}
 	if len(res.Findings) != 1 || res.Findings[0].Rule != "vpc-port-scan" {
 		t.Fatalf("findings %+v", res.Findings)
+	}
+}
+
+// TestRunVPCReadKeysReflectCompletion is the controller ruling for I1: a
+// stream object counts as read only when it was read to the end. A bad
+// record line is reported through a *flowlog.LineError only after Stream
+// has scanned every line in the object, so that object still counts as
+// read. A truncated object stops partway through, before EOF, so it must
+// not count as read even though some of its records were emitted.
+func TestRunVPCReadKeysReflectCompletion(t *testing.T) {
+	scope, filter := vpcScope()
+	badLine := vpcHeader +
+		vpcRow(ts10, "203.0.113.9", "10.0.1.10", 40001, 22, "REJECT", 40) +
+		"garbage not a flow record\n" +
+		vpcRow(ts11, "203.0.113.9", "10.0.1.11", 40002, 23, "REJECT", 40)
+	truncPrefix := vpcHeader + vpcRow(ts10, "203.0.113.9", "10.0.1.12", 40003, 24, "REJECT", 40)
+	truncRest := vpcRow(ts10, "203.0.113.9", "10.0.1.13", 40004, 25, "REJECT", 40)
+	badKey, truncKey := vpcKey("20", "badline"), vpcKey("20", "truncated")
+	store := s3src.NewMemStore(map[string][]byte{
+		badKey:   gz(t, badLine),
+		truncKey: truncatedGzip(t, truncPrefix, truncRest),
+	})
+	res, err := RunVPC(context.Background(), store, VPCOptions{Scope: scope, Filter: filter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(res.ReadKeys, badKey) {
+		t.Fatalf("object with a bad line must count as read: %v", res.ReadKeys)
+	}
+	if slices.Contains(res.ReadKeys, truncKey) {
+		t.Fatalf("truncated object must not count as read: %v", res.ReadKeys)
+	}
+	if len(res.Errors) != 2 {
+		t.Fatalf("errors = %v, want one per object", res.Errors)
+	}
+}
+
+// TestRunVPCNoLogStatusColumn is a deferred cleanup: a header without a
+// log-status column means every row is a flow, and RunVPC must count it.
+func TestRunVPCNoLogStatusColumn(t *testing.T) {
+	header := "version account-id interface-id srcaddr dstaddr srcport dstport protocol packets bytes start end action\n"
+	row := "2 " + vpcAcct + " eni-0a1b2c3d4e5f60718 203.0.113.9 10.0.1.10 40001 22 6 1 40 " +
+		itoa(ts10) + " " + itoa(ts10+60) + " ACCEPT\n"
+	store := s3src.NewMemStore(map[string][]byte{vpcKey("20", "nostatus"): gz(t, header+row)})
+	scope, filter := vpcScope()
+	res, err := RunVPC(context.Background(), store, VPCOptions{Scope: scope, Filter: filter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.Flows != 1 || res.MatchedRecords != 1 || len(res.Errors) != 0 {
+		t.Fatalf("flows %d matched %d errors %v", res.Summary.Flows, res.MatchedRecords, res.Errors)
 	}
 }

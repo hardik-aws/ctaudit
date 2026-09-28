@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,6 +226,54 @@ func TestParseSize(t *testing.T) {
 	for _, in := range []string{"", "0", "-1", "1.5G", "G", "9999999T", "12X"} {
 		if _, err := parseSize(in); err == nil {
 			t.Errorf("parseSize(%q) accepted", in)
+		}
+	}
+}
+
+// TestRunVPCLokiFailureExitsTwo follows the waf/elb pattern
+// (TestRunWAFLokiFailureExitsTwo): a failed sink push must exit 2 even
+// though the scan itself succeeded and the HTML report was written.
+func TestRunVPCLokiFailureExitsTwo(t *testing.T) {
+	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "entry too far behind", http.StatusBadRequest)
+	}))
+	defer loki.Close()
+	htmlPath := filepath.Join(t.TempDir(), "vpc.html")
+	code, _, stderr := runVPCArgs(t, vpcStore(t, vpcAcceptWeb, vpcRejectSSH, vpcExposedSSH),
+		"--html", htmlPath, "--fail-on", "none", "--loki", loki.URL)
+	if code != exitFailed {
+		t.Fatalf("exit = %d, want %d; stderr = %s", code, exitFailed, stderr)
+	}
+	if !strings.Contains(stderr, "loki push") {
+		t.Errorf("stderr missing loki error: %s", stderr)
+	}
+	if _, err := os.Stat(htmlPath); err != nil {
+		t.Errorf("HTML report should still be written: %v", err)
+	}
+}
+
+// TestRunVPCDebugOmitsRecordContents follows the debug_test.go pattern
+// (e.g. TestRunELBDebugText): --debug must produce debug lines but never
+// leak record contents such as the interface ID or the addresses in the
+// fixture flows.
+func TestRunVPCDebugOmitsRecordContents(t *testing.T) {
+	code, _, stderr := runVPCArgs(t, vpcStore(t, vpcAcceptWeb, vpcRejectSSH, vpcExposedSSH), "--debug")
+	if code != exitFindings {
+		t.Fatalf("exit = %d, want %d; stderr = %s", code, exitFindings, stderr)
+	}
+	for _, want := range []string{
+		`msg="scan scope" subcommand=vpc bucket=b`,
+		`msg="listed prefix"`,
+		`msg="object read" key=` + testVPCKey,
+		`msg="scan done" objects=1`,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	for _, leak := range []string{"eni-0a1b2c3d4e5f60718", "eni-0b2c3d4e5f6071829", "203.0.113.50", "10.0.1.20", "198.51.100.7", "10.0.1.10"} {
+		if strings.Contains(stderr, leak) {
+			t.Errorf("debug output leaks record contents %q:\n%s", leak, stderr)
 		}
 	}
 }

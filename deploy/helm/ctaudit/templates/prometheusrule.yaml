@@ -61,7 +61,7 @@ spec:
             severity: warning
           annotations:
             summary: {{ `HIGH VPC Flow Logs finding from {{ $labels.pod }}` | quote }}
-            description: {{ `{{ $value | humanize }} high findings (port scans or internet-reachable sensitive ports) in the last 30 minutes. Open /report on {{ $labels.service }} or query Loki for kind="finding".` | quote }}
+            description: {{ `{{ $value | humanize }} high findings (port scans or internet-reachable sensitive ports) in the last 30 minutes. Open /report on {{ $labels.service }} or query Loki with {kind="finding", subcommand="vpc"} | json.` | quote }}
         - alert: CtauditScanErrors
           expr: increase(ctaudit_scan_errors_total{ {{- $job }}}[1h]) > 0
           labels:

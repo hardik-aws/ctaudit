@@ -52,6 +52,9 @@ debug: false
 logFormat: text             # text | json
 
 resources:
+  # For subcommand: vpc on a busy internet-facing VPC, prefer a lower
+  # args: ["--fetch-workers", "8"] and a shorter lookback over raising these
+  # limits, since each fetch worker holds its own bounded summary.
   requests:
     cpu: 100m
     memory: 256Mi

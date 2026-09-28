@@ -99,9 +99,13 @@ func TestVPCSummaryScanSkipsNonSYN(t *testing.T) {
 	ack.TCPFlags = 16
 	syn := vflow("198.51.100.99", "10.0.1.5", 51000, 3306, 6, "REJECT", 40)
 	syn.TCPFlags = 2
+	// SYN-ACK (flags 18): the answer to a SYN sent the other way, not a
+	// connection attempt by this source, so it must not count either.
+	synAck := vflow("198.51.100.99", "10.0.1.5", 51001, 3307, 6, "REJECT", 40)
+	synAck.TCPFlags = 18
 	icmp := vflow("198.51.100.99", "10.0.1.5", 0, 0, 1, "REJECT", 40)
 	private := vflow("10.0.9.9", "10.0.1.5", 51000, 22, 6, "REJECT", 40)
-	for _, e := range []flowlog.Entry{ack, syn, icmp, private} {
+	for _, e := range []flowlog.Entry{ack, syn, synAck, icmp, private} {
 		s.Add(e)
 	}
 	if got := s.ScanPorts.Values(netip.MustParseAddr("198.51.100.99")); len(got) != 1 || got[0] != 3306 {
@@ -149,6 +153,23 @@ func TestVPCSummaryExposedAndLegacy(t *testing.T) {
 	s.Add(vflow("10.0.1.7", "10.0.1.8", 50000, 445, 6, "ACCEPT", 10))
 	if s.Legacy["10.0.1.6|in|23/tcp"] != 1 || s.Legacy["10.0.1.7|out|445/tcp"] != 1 || len(s.Legacy) != 2 {
 		t.Fatalf("legacy: %v", s.Legacy)
+	}
+}
+
+// TestVPCSummaryExposedNeedsInitiator is the controller ruling for I2: a
+// flow only looks exposed when the public source looks like it started the
+// conversation. A source port below the destination port looks like return
+// traffic (a reply from the sensitive service back out through a NAT'd or
+// misclassified path), not a new connection from the public side.
+func TestVPCSummaryExposedNeedsInitiator(t *testing.T) {
+	s := NewVPCSummary(VPCLimits{})
+	s.Add(vflow("203.0.113.5", "10.0.0.9", 443, 5432, 6, "ACCEPT", 100))
+	if len(s.Exposed) != 0 {
+		t.Fatalf("return-looking traffic must not expose: %v", s.Exposed)
+	}
+	s.Add(vflow("203.0.113.5", "10.0.0.9", 50000, 5432, 6, "ACCEPT", 100))
+	if x := s.Exposed["10.0.0.9:5432/tcp"]; x == nil || x.Flows != 1 {
+		t.Fatalf("initiator-looking traffic must still expose: %+v", s.Exposed)
 	}
 }
 

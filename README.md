@@ -323,16 +323,16 @@ Flow log objects are filed under the day they were delivered, so flows starting 
 | Rule | Severity | Fires on |
 |---|---|---|
 | `vpc-port-scan` | HIGH | A public source made rejected connection attempts to `--scan-ports` or more distinct destination ports |
-| `vpc-sensitive-port-exposed` | HIGH | A private host accepted a connection to a sensitive port from a public source |
+| `vpc-sensitive-port-exposed` | HIGH | A private host accepted a connection to a sensitive port from a public source that looks like it started the flow |
 | `vpc-host-sweep` | MEDIUM | A source started flows to `--sweep-hosts` or more distinct private addresses |
 | `vpc-large-egress` | MEDIUM | A private host sent at least `--egress-bytes` in accepted flows it started to public addresses |
 | `vpc-legacy-protocol` | LOW | An accepted flow used FTP, Telnet, or SMB |
 
 Sensitive ports (SSH, RDP, MySQL, PostgreSQL, SQL Server, Redis, Elasticsearch, MongoDB, the Docker API, and memcached): `22, 3389, 3306, 5432, 1433, 6379, 9200, 27017, 2375, 11211`. Legacy ports (FTP, Telnet, SMB): `21, 23, 445`.
 
-An address is classified as private (RFC 1918, `100.64.0.0/10`, link-local, loopback, `fc00::/7`, `fe80::/10`) or public. The source and destination addresses used for classification and for every rule prefer `pkt-srcaddr`/`pkt-dstaddr` over `srcaddr`/`dstaddr` when the format carries them. The host sweep and large egress rules count only flows whose source looks like the client: ICMP, a flow with unknown ports, or a source port above the destination port.
+An address is classified as private (RFC 1918, `100.64.0.0/10`, link-local, loopback, `fc00::/7`, `fe80::/10`) or public. The source and destination addresses used for classification and for every rule prefer `pkt-srcaddr`/`pkt-dstaddr` over `srcaddr`/`dstaddr` when the format carries them. The host sweep, large egress, and sensitive-port-exposed rules count only flows whose source looks like the client: ICMP, a flow with unknown ports, or a source port above the destination port.
 
-**Memory.** Every counter in the VPC summary is capped at 50,000 distinct keys, with the rest folded into `(other)`. The port-scan and host-sweep trackers follow at most 20,000 sources each. When a cap is reached, the report says findings may be incomplete. NODATA and SKIPDATA status rows are counted separately from flows; a SKIPDATA row triggers a warning, because flow log capture skipped records in that interval and totals undercount the real traffic.
+**Memory.** Every counter in the VPC summary is capped at 50,000 distinct keys, with the rest folded into `(other)`. The port-scan and host-sweep trackers follow at most 20,000 sources each. When a cap is reached, the report says findings may be incomplete. NODATA and SKIPDATA status rows are counted separately from flows; a SKIPDATA row triggers a warning, because flow log capture skipped records in that interval and totals undercount the real traffic. These caps apply per fetch worker during a one-shot scan, since each worker owns a full summary until the merge at the end; `serve vpc` instead keeps one bounded summary per committed tick within `--lookback`. For a busy internet-facing VPC, prefer `--fetch-workers 8` or fewer, and a shorter `--lookback` or a higher memory limit, over raising the caps.
 
 `ctaudit vpc` exits 1 when a finding is at or above `--fail-on` (default `high`), 0 on a clean scan, and 2 on failure, the same as `cloudtrail` and `waf`.
 

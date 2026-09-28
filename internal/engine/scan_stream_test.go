@@ -46,10 +46,12 @@ func TestScanStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.shards[0].sum != 10 || out.recordsRead != 4 || out.objectsScanned != 2 {
+	// b.txt's stream stops at "bad" instead of reading on to "5", so with no
+	// complete hook set it does not count as read: only a.txt does.
+	if out.shards[0].sum != 10 || out.recordsRead != 4 || out.objectsScanned != 1 {
 		t.Fatalf("sum %d records %d objects %d", out.shards[0].sum, out.recordsRead, out.objectsScanned)
 	}
-	if !reflect.DeepEqual(out.readKeys, []string{"p/a.txt", "p/b.txt"}) {
+	if !reflect.DeepEqual(out.readKeys, []string{"p/a.txt"}) {
 		t.Fatalf("readKeys %v", out.readKeys)
 	}
 	if len(out.errs) != 2 || !strings.Contains(strings.Join(out.errs, "\n"), "decode p/c.txt: bad line") {

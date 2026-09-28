@@ -51,8 +51,9 @@ func (l VPCLimits) withDefaults() VPCLimits {
 	return l
 }
 
-// ExposedService aggregates accepted flows from public sources to one
-// private host, port, and protocol.
+// ExposedService aggregates accepted flows from public sources that look
+// like they started the conversation (see initiator) to one private host,
+// port, and protocol.
 type ExposedService struct {
 	Flows int
 	Bytes int64
@@ -95,7 +96,8 @@ type VPCSummary struct {
 	ScanPorts *Distinct[uint16]
 	Sweep     *Distinct[netip.Addr]
 
-	// Exposed is keyed "10.0.1.20:22/tcp" (IPv6 as "[fd00::5]:5432/tcp").
+	// Exposed is keyed "10.0.1.20:22/tcp" (IPv6 as "[fd00::5]:5432/tcp"). It
+	// only holds flows whose public source looks like it started the flow.
 	Exposed map[string]*ExposedService
 	// ExposedDropped counts flows for exposed services past the key cap.
 	ExposedDropped int
@@ -158,10 +160,11 @@ func initiator(e flowlog.Entry) bool {
 }
 
 // connAttempt reports whether a flow may be a connection attempt: not TCP,
-// TCP with unknown flags, or TCP flags that include SYN. Rejected TCP flows
-// without SYN are return traffic, not probes.
+// TCP with unknown flags, or TCP flags that are SYN without ACK. Rejected
+// TCP flows without SYN, and a SYN-ACK reply (the answer to a SYN sent the
+// other way), are return traffic, not probes.
 func connAttempt(e flowlog.Entry) bool {
-	return e.Protocol != 6 || e.TCPFlags < 0 || e.TCPFlags&2 != 0
+	return e.Protocol != 6 || e.TCPFlags < 0 || e.TCPFlags&0x12 == 0x02
 }
 
 func (s *VPCSummary) exposed(key string) *ExposedService {
@@ -228,7 +231,7 @@ func (s *VPCSummary) Add(e flowlog.Entry) {
 	if !accept {
 		return
 	}
-	if srcPublic && dstPrivate && tcpUDP && e.FlowDirection != "egress" && slices.Contains(VPCSensitivePorts, e.DstPort) {
+	if srcPublic && dstPrivate && tcpUDP && started && e.FlowDirection != "egress" && slices.Contains(VPCSensitivePorts, e.DstPort) {
 		key := netip.AddrPortFrom(dst, uint16(e.DstPort)).String() + "/" + e.ProtocolName()
 		if x := s.exposed(key); x != nil {
 			x.Flows++

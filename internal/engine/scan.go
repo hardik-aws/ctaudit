@@ -30,9 +30,15 @@ type scanSpec[T, S any] struct {
 	decode func(key string, r io.Reader) ([]T, error)
 	// stream, when set, replaces decode: it calls emit for each record as
 	// it is decoded, so a large object's records are never held in memory
-	// together. An object that emitted records before failing counts as
-	// read, and its error is still recorded.
-	stream   func(key string, r io.Reader, emit func(T)) error
+	// together. Its error is always recorded, but the object counts as read
+	// (added to readKeys and objectsScanned) only when it was read to the
+	// end: err == nil, or complete is set and reports true for err.
+	stream func(key string, r io.Reader, emit func(T)) error
+	// complete, used only with stream, reports whether an object that
+	// returned err was still read to the end (e.g. a decode error that
+	// names bad lines but keeps scanning to EOF). When nil, only err == nil
+	// counts as complete.
+	complete func(err error) bool
 	newShard func() S
 	// visit folds one record into a shard and reports whether it matched
 	// the filters.
@@ -179,10 +185,10 @@ func scan[T, S any](ctx context.Context, store s3src.ObjectStore, spec scanSpec[
 							w.errs = append(w.errs, err.Error())
 						}
 					}
-					if recs > 0 || err == nil {
+					w.recordsRead += recs
+					if err == nil || (spec.complete != nil && spec.complete(err)) {
 						w.readKeys = append(w.readKeys, key)
 						w.objectsScanned++
-						w.recordsRead += recs
 					}
 					if spec.log != nil && err == nil {
 						spec.log.Debug("object read", "key", key, "bytes", size, "records", recs, "matched", matched, "dur", time.Since(started))

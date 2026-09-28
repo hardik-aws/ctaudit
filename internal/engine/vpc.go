@@ -115,6 +115,14 @@ func RunVPC(ctx context.Context, store s3src.ObjectStore, opts VPCOptions) (VPCR
 		keep:         flowlog.IsLogKey,
 		skip:         skip,
 		stream:       flowlog.Stream,
+		// A *LineError means Stream read the object to the end and skipped
+		// only the bad lines it names; every other stream error (I/O, gzip,
+		// a bad header, an unsupported Parquet object) means the object was
+		// not fully read.
+		complete: func(err error) bool {
+			var lineErr *flowlog.LineError
+			return errors.As(err, &lineErr)
+		},
 		newShard: func() *vpcShard {
 			sh := &vpcShard{summary: stats.NewVPCSummary(limits)}
 			if opts.Emit != nil {
