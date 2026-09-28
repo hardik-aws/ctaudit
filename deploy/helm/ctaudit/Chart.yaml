@@ -2,8 +2,8 @@ apiVersion: v2
 name: ctaudit
 description: Run ctaudit serve scanners that read CloudTrail and ELB logs from S3 and expose Prometheus metrics.
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+version: 0.4.0
+appVersion: "0.4.0"
 keywords:
   - cloudtrail
   - elb
