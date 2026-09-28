@@ -68,7 +68,7 @@
         "name": "subcommand",
         "label": "Subcommand",
         "type": "custom",
-        "query": "cloudtrail,elb,s3",
+        "query": "cloudtrail,elb,waf,s3",
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
