@@ -63,6 +63,16 @@ groups:
         annotations:
           summary: "HIGH S3 access log finding from {{ $labels.pod }}"
           description: "{{ $value | humanize }} high rule hits in the last 30 minutes."
+      - alert: CtauditVPCHighFinding
+        expr: increase(ctaudit_vpc_findings_total{job=~".*ctaudit.*",severity="high"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "HIGH VPC Flow Logs finding from {{ $labels.pod }}"
+          description: >-
+            {{ $value | humanize }} high findings (port scans or internet-reachable
+            sensitive ports) in the last 30 minutes. Open /report on the scanner or
+            query Loki with {kind="finding", subcommand="vpc"} | json.
 
       - alert: CtauditScanErrors
         expr: increase(ctaudit_scan_errors_total{job=~".*ctaudit.*"}[1h]) > 0

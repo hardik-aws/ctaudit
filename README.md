@@ -1,12 +1,13 @@
 # ctaudit
 
-`ctaudit` reads AWS logs straight from S3 and prints a report, then writes the same report to a single self-contained HTML file. It has four commands:
+`ctaudit` reads AWS logs straight from S3 and prints a report, then writes the same report to a single self-contained HTML file. It has five commands:
 
 - `ctaudit cloudtrail` reads gzipped CloudTrail logs and reports security findings, forensic matches, and API volume.
 - `ctaudit elb` (alias `ctaudit alb`) reads Elastic Load Balancing access logs from Application, Network, and Classic Load Balancers. It reports traffic, latency, status codes, clients, targets, and TLS usage, and lists the individual requests that match forensic filters.
 - `ctaudit waf` reads AWS WAF traffic logs and reports request volume by action, blocking and rate-limit findings, and the terminating rules, clients, and requests behind them.
 - `ctaudit s3` reads Amazon S3 server access logs and reports requests by operation, status, requester, and client, data egress, TLS and signature posture, and findings such as anonymous writes, denied-request bursts, mass deletes, and bucket policy changes.
-- `ctaudit serve cloudtrail|elb|waf|s3` runs any of the four as a long-running scanner with Prometheus metrics, for Kubernetes. See [Running on Kubernetes](#running-on-kubernetes).
+- `ctaudit vpc` reads VPC Flow Logs (text format) and reports traffic, rejected flows, and network findings such as port scans and internet-reachable databases.
+- `ctaudit serve cloudtrail|elb|waf|s3|vpc` runs any of the five as a long-running scanner with Prometheus metrics, for Kubernetes. See [Running on Kubernetes](#running-on-kubernetes).
 
 The command is required. Running `ctaudit` alone prints usage and exits 2. It uses no AWS Glue, no Athena, and no other query service. Everything runs in-process against objects read from the log bucket.
 
@@ -278,13 +279,70 @@ S3 files each object under the time it was delivered, which trails the requests 
 
 `ctaudit s3` exits 1 when a finding is at or above `--fail-on` (default `critical`), 0 on a clean scan, and 2 on failure, the same as `cloudtrail` and `waf`.
 
+## VPC Flow Logs
+
+Flow logs must be delivered to S3 in the default text format with the default partitioning: `AWSLogs/[<org-id>/]<account>/vpcflowlogs/<region>/YYYY/MM/DD/<account>_vpcflowlogs_<region>_<flow-log-id>_<YYYYMMDDTHHmmZ>_<hash>.log.gz`. Parquet objects fail the scan (exit 2), and a Hive-compatible prefix layout is reported as an error too; recreate the flow log with the text file format and without Hive-compatible prefixes. Both the default field list and a custom one work, because `ctaudit` reads the field names from each file's header line rather than assuming a fixed layout. The `--since`/`--until` window applies to each flow's `start` field.
+
+```bash
+./ctaudit vpc --bucket example-flow-logs --bucket-region us-east-1 \
+  --accounts 111122223333 --regions us-east-1 --since 2026-09-23 --until 2026-09-23 \
+  --action REJECT --dst-cidr 10.0.0.0/16
+```
+
+This prints the terminal summary and writes `vpc-report.html`.
+
+### VPC flags
+
+`--bucket`, `--accounts`, `--regions`, `--prefix`, `--since`, `--until`, `--top`, `--list-workers`, `--fetch-workers`, `--profile`, `--bucket-region`, `--debug`, and `--log-format` work as they do for CloudTrail. `--prefix` is the key prefix the flow log writes under, before `AWSLogs/`.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--org-id` | | AWS Organizations ID segment in the key, e.g. `o-abc123`, when logs are delivered under an organization |
+| `--action` | | Comma-separated actions: `ACCEPT`, `REJECT` |
+| `--src-cidr` | | Comma-separated CIDRs or addresses; matches `srcaddr` or `pkt-srcaddr` |
+| `--dst-cidr` | | Comma-separated CIDRs or addresses; matches `dstaddr` or `pkt-dstaddr` |
+| `--ports` | | Comma-separated ports and ranges, e.g. `22,8000-8100`; matches either end |
+| `--protocol` | | Comma-separated protocol names (`tcp`, `udp`, `icmp`, `icmpv6`, `gre`, `esp`, `ah`, `sctp`) or numbers |
+| `--interfaces` | | Comma-separated network interface IDs (`eni-...`) |
+| `--vpcs` | | Comma-separated VPC IDs; flows from formats without `vpc-id` never match |
+| `--scan-ports` | 25 | Distinct rejected destination ports that make a public source a port scanner |
+| `--sweep-hosts` | 50 | Distinct private destinations that make a source a host sweep |
+| `--egress-bytes` | `1GiB` | Bytes one private host must send to public addresses for a finding; plain bytes or `K`, `M`, `G`, `T` (binary) |
+| `--emit-flows` | `reject` | Matching flows sent to `--loki` and `--jsonl`: `reject`, `all`, or `none` (findings are always sent) |
+| `--fail-on` | `high` | Exit 1 when a finding is at or above `none`, `low`, `medium`, `high`, or `critical` |
+| `--html` | `vpc-report.html` | HTML report path. `""` skips it. Must not end in `.txt` |
+| `--pdf` | | Also write a printable PDF report to this path. Must end in `.pdf` |
+| `--max-events` | 200 | Matching flows kept for the flows table |
+
+`--src-cidr` and `--dst-cidr` also match `pkt-srcaddr`/`pkt-dstaddr`, and `--ports` matches either end (source or destination port).
+
+Flow log objects are filed under the day they were delivered, so flows starting late on `--until` can land in the next day's prefix. Like the other commands, `ctaudit vpc` scans one extra day of prefixes and filters back to the exact window.
+
+### VPC findings
+
+| Rule | Severity | Fires on |
+|---|---|---|
+| `vpc-port-scan` | HIGH | A public source made rejected connection attempts to `--scan-ports` or more distinct destination ports |
+| `vpc-sensitive-port-exposed` | HIGH | A private host accepted a connection to a sensitive port from a public source |
+| `vpc-host-sweep` | MEDIUM | A source started flows to `--sweep-hosts` or more distinct private addresses |
+| `vpc-large-egress` | MEDIUM | A private host sent at least `--egress-bytes` in accepted flows it started to public addresses |
+| `vpc-legacy-protocol` | LOW | An accepted flow used FTP, Telnet, or SMB |
+
+Sensitive ports (SSH, RDP, MySQL, PostgreSQL, SQL Server, Redis, Elasticsearch, MongoDB, the Docker API, and memcached): `22, 3389, 3306, 5432, 1433, 6379, 9200, 27017, 2375, 11211`. Legacy ports (FTP, Telnet, SMB): `21, 23, 445`.
+
+An address is classified as private (RFC 1918, `100.64.0.0/10`, link-local, loopback, `fc00::/7`, `fe80::/10`) or public. The source and destination addresses used for classification and for every rule prefer `pkt-srcaddr`/`pkt-dstaddr` over `srcaddr`/`dstaddr` when the format carries them. The host sweep and large egress rules count only flows whose source looks like the client: ICMP, a flow with unknown ports, or a source port above the destination port.
+
+**Memory.** Every counter in the VPC summary is capped at 50,000 distinct keys, with the rest folded into `(other)`. The port-scan and host-sweep trackers follow at most 20,000 sources each. When a cap is reached, the report says findings may be incomplete. NODATA and SKIPDATA status rows are counted separately from flows; a SKIPDATA row triggers a warning, because flow log capture skipped records in that interval and totals undercount the real traffic.
+
+`ctaudit vpc` exits 1 when a finding is at or above `--fail-on` (default `high`), 0 on a clean scan, and 2 on failure, the same as `cloudtrail` and `waf`.
+
 ## PDF report
 
-All four subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the ELB health values or WAF action totals, timeline charts, target group and slowest path tables or WAF or S3 ranked tables, the hourly chart, and, for CloudTrail, WAF, and S3, every finding the report kept. It leaves out the matching requests, connections, and events tables; use the HTML report for those. A PDF write failure exits 2.
+All five subcommands take `--pdf <path>` to write a printable A4 report next to the HTML one. It holds the summary, the ELB health values, WAF action totals, or S3 or VPC traffic totals, timeline charts, target group and slowest path tables or WAF, S3, or VPC ranked tables, the hourly chart, and, for CloudTrail, WAF, S3, and VPC, every finding the report kept. It leaves out the matching requests, connections, events, and flows tables; use the HTML report for those. A PDF write failure exits 2.
 
 ## Prometheus and Loki
 
-All four subcommands can push their results into an existing Prometheus and Grafana stack. The one-shot commands listen on no port: ctaudit pushes run metrics to a Prometheus Pushgateway and streams every matching record to the Loki push API, then exits. Both outputs are off unless you set their flags.
+All five subcommands can push their results into an existing Prometheus and Grafana stack. The one-shot commands listen on no port: ctaudit pushes run metrics to a Prometheus Pushgateway and streams every matching record to the Loki push API, then exits. Both outputs are off unless you set their flags.
 
 | Flag | Meaning |
 |---|---|
@@ -311,32 +369,36 @@ CTAUDIT_LOKI_TOKEN=... ./ctaudit cloudtrail --bucket org-trail --accounts 111122
   --loki http://loki-gateway.monitoring --loki-tenant security
 ```
 
-**Loki.** Every record that passes the filters is sent, uncapped by `--max-events`, and for `cloudtrail`, `waf`, and `s3` every finding follows at the end. Labels stay low-cardinality: `job`, `subcommand`, `kind` (`event`, `finding`, `request`, or `conn`), plus `account` and `region` on CloudTrail events, `severity` and `account` on findings, `lb` on ELB lines, `acl` and `action` on WAF lines, and `bucket` and `status_class` on S3 lines. Each line is a JSON object with `kind`, `run_id`, and the record's fields. CloudTrail events keep CloudTrail's field names; findings, ELB lines, WAF lines, and S3 lines use snake_case. The line always carries the record time (`event_time` or CloudTrail's `eventTime`). With `--loki-time scan` each entry is stamped with the scan time, so Loki accepts any window. With `--loki-time event` each entry is stamped with its record time, so Grafana's time picker and over-time charts follow request and event times. Loki accepts a stream's entries only in order, within an out-of-order window of half `max_chunk_age` (1 hour by default), and refuses entries older than `reject_old_samples_max_age` (7 days by default). So in event mode ctaudit holds every line until the scan ends (at most 2,000,000; past that the run fails and asks for `--loki-time scan` or a shorter window), sorts each stream oldest first, and pushes one batch at a time. When Loki still refuses entries for their age, it keeps the rest of the push; ctaudit prints a warning with the count instead of failing, because a retry cannot make an entry younger. Keep event-mode windows inside the 7-day limit, or raise it in Loki. CloudTrail lines over 128 KiB drop `requestParameters`, `responseElements`, and `additionalEventData` and carry `"truncated": true`.
+**Loki.** Every record that passes the filters is sent, uncapped by `--max-events`, and for `cloudtrail`, `waf`, `s3`, and `vpc` every finding follows at the end. Labels stay low-cardinality: `job`, `subcommand`, `kind` (`event`, `finding`, `request`, `conn`, or `flow`), plus `account` and `region` on CloudTrail events, `severity` and `account` on findings, `lb` on ELB lines, `acl` and `action` on WAF lines, `bucket` and `status_class` on S3 lines, and `action` and `vpc` on VPC flow lines. Each line is a JSON object with `kind`, `run_id`, and the record's fields. CloudTrail events keep CloudTrail's field names; findings, ELB lines, WAF lines, S3 lines, and VPC flow lines use snake_case. The line always carries the record time (`event_time` or CloudTrail's `eventTime`). With `--loki-time scan` each entry is stamped with the scan time, so Loki accepts any window. With `--loki-time event` each entry is stamped with its record time, so Grafana's time picker and over-time charts follow request, event, and flow times. Loki accepts a stream's entries only in order, within an out-of-order window of half `max_chunk_age` (1 hour by default), and refuses entries older than `reject_old_samples_max_age` (7 days by default). So in event mode ctaudit holds every line until the scan ends (at most 2,000,000; past that the run fails and asks for `--loki-time scan` or a shorter window), sorts each stream oldest first, and pushes one batch at a time. When Loki still refuses entries for their age, it keeps the rest of the push; ctaudit prints a warning with the count instead of failing, because a retry cannot make an entry younger. Keep event-mode windows inside the 7-day limit, or raise it in Loki. CloudTrail lines over 128 KiB drop `requestParameters`, `responseElements`, and `additionalEventData` and carry `"truncated": true`.
+
+For `vpc`, `--emit-flows` controls which matching flows are sent: `reject` (the default) sends only REJECT flows; `all` sends every matching flow, which can produce millions of lines per hour on a busy VPC; `none` sends no flows. Findings are always sent regardless of `--emit-flows`.
 
 ```logql
 {job="ctaudit", kind="finding", severity="critical"} | json | line_format "{{.rule}} {{.actor}} {{.title}}"
 {job="ctaudit", subcommand="elb", kind="request"} | json | elb_status =~ "5.." | line_format "{{.client_ip}} {{.method}} {{.url}}"
 {job="ctaudit", subcommand="waf", kind="request"} | json | action = "BLOCK" | line_format "{{.client_ip}} {{.rule}} {{.uri}}"
 {job="ctaudit", subcommand="s3", kind="request", status_class="4xx"} | json | status = "403" | line_format "{{.remote_ip}} {{.requester}} {{.key}}"
+{job="ctaudit", subcommand="vpc", kind="flow", action="REJECT"} | json | line_format "{{.source}} -> {{.destination}}:{{.dst_port}}"
 {job="ctaudit", kind="event"} | json | userIdentity_type = "Root"
 ```
 
-**Pushgateway.** Metrics are pushed once per run to `/metrics/job/<job>/subcommand/<cloudtrail|elb|waf|s3>`, so the subcommands never overwrite each other. Every run sends `ctaudit_objects_scanned`, `ctaudit_records_read`, `ctaudit_records_matched`, `ctaudit_scan_errors`, `ctaudit_scan_duration_seconds`, and `ctaudit_last_run_timestamp_seconds`. `ctaudit_last_success_timestamp_seconds` is sent only when the scan had no errors and the Loki and JSONL output worked, so an earlier success stays in place after a failed run. `cloudtrail` adds `ctaudit_findings{severity}`, `ctaudit_findings_dropped`, `ctaudit_cloudtrail_write_events`, and `ctaudit_cloudtrail_error_events`. `elb` adds `ctaudit_elb_requests{status_class}`, byte and latency gauges, and TLS connection gauges. `waf` adds `ctaudit_waf_requests{action}`, `ctaudit_waf_findings{severity}`, and `ctaudit_waf_web_acls`. `s3` adds `ctaudit_s3_requests{status_class}`, `ctaudit_s3_findings{severity}`, and `ctaudit_s3_bytes_sent`. Labeled families always carry every label value, with zeros, so no stale series survive.
+**Pushgateway.** Metrics are pushed once per run to `/metrics/job/<job>/subcommand/<cloudtrail|elb|waf|s3|vpc>`, so the subcommands never overwrite each other. Every run sends `ctaudit_objects_scanned`, `ctaudit_records_read`, `ctaudit_records_matched`, `ctaudit_scan_errors`, `ctaudit_scan_duration_seconds`, and `ctaudit_last_run_timestamp_seconds`. `ctaudit_last_success_timestamp_seconds` is sent only when the scan had no errors and the Loki and JSONL output worked, so an earlier success stays in place after a failed run. `cloudtrail` adds `ctaudit_findings{severity}`, `ctaudit_findings_dropped`, `ctaudit_cloudtrail_write_events`, and `ctaudit_cloudtrail_error_events`. `elb` adds `ctaudit_elb_requests{status_class}`, byte and latency gauges, and TLS connection gauges. `waf` adds `ctaudit_waf_requests{action}`, `ctaudit_waf_findings{severity}`, and `ctaudit_waf_web_acls`. `s3` adds `ctaudit_s3_requests{status_class}`, `ctaudit_s3_findings{severity}`, and `ctaudit_s3_bytes_sent`. `vpc` adds `ctaudit_vpc_flows{action}`, `ctaudit_vpc_bytes`, `ctaudit_vpc_packets`, and `ctaudit_vpc_findings{severity}`. Labeled families always carry every label value, with zeros, so no stale series survive.
 
 A bad URL, job name, or credential variable exits 2 before any S3 call. A failed Loki or Pushgateway push also exits 2, after the reports are written. `docs/grafana/` holds an example dashboard and Prometheus alert rules.
 
-**Report dashboards.** [`deploy/helm/ctaudit/dashboards/`](deploy/helm/ctaudit/dashboards) holds four Grafana dashboards that rebuild the HTML reports from the Loki lines alone, with no Prometheus needed:
+**Report dashboards.** [`deploy/helm/ctaudit/dashboards/`](deploy/helm/ctaudit/dashboards) holds five Grafana dashboards that rebuild the HTML reports from the Loki lines alone, with no Prometheus needed:
 
 - `ctaudit-elb-report.json` (uid `ctaudit-elb-report`) shows each piece of information once. The Traffic row has the request, byte, 4xx, 5xx, latency, and load balancer totals. A Health row has gauges for the average target response time (orange from 0.5 s, red from 1 s), the 5xx rate (1% and 5%), and target connection errors, and a count of targets that returned a 5xx. A Timeline row charts requests by ELB status class, target responses with connection errors, latency with dashed 0.5 s and 1 s guides, and the average latency of the five slowest paths, with pies for load balancer, method, and listener type. A Target groups and timing row has one table per target group (requests, target 2xx, 4xx, and 5xx, ELB 5xx, connection errors, targets, and average and maximum target time) and the slowest paths. A Failing requests section, driven by the `Failing status` variable (4xx and 5xx, 5xx only, or 4xx only), shows the failing count and share, failing requests by status over time, by path, client IP, target, error reason, and load balancer, and the failing request lines with their error reason and trace ID. The Requests row has the remaining request tables (ELB and target status, client IPs, hosts, normalized paths, user agents, targets, action, TLS protocol and cipher, classifications). The TLS connections row has the connection totals and tables that the request log does not carry: connections per load balancer, listener and TLS, key exchange, verify status, failed 443 handshakes by client IP, and incoming TLS alerts. It ends with the matching requests and connections as rows.
 - `ctaudit-cloudtrail-report.json` (uid `ctaudit-cloudtrail-report`) shows the event, write, and error totals and the findings by severity, rule, actor, and account. Events by account is a chart whose legend carries each account's total. It has the principal, event name, service, error code, source IP, region, and identity type tables, and the matching findings and events as rows.
 - `ctaudit-waf-report.json` (uid `ctaudit-waf-report`) has a Summary row with the request, blocked, allowed, counted, challenged, and block rate stats, the web ACL count, and requests by action over time. A Findings row lists the security findings by time, severity, rule, title, actor, and detail. A Blocking row, filtered to non-ALLOW actions where noted, has terminating rules, rule groups, the top blocked client IPs, blocked countries, and a pie of actions by inspection source. A Clients row has the top client IPs, countries, JA4 fingerprints, and user agents. A Requests row has hosts, normalized URIs, methods, and response codes. It ends with the matching requests as rows.
 - `ctaudit-s3-report.json` (uid `ctaudit-s3-report`) has a Summary row with the request, error, denied, anonymous, and bytes sent stats, the source bucket count, and requests by status class over time. A Findings row lists the security findings by time, severity, rule, title, actor, and detail. An Access row has operations, requesters, top remote IPs, denied by remote IP, and error codes. A Data row has the top keys, bytes sent by requester and by remote IP, and requests by bucket. A Security posture row has TLS versions, auth types, signature versions, and user agents. It ends with the matching requests as rows.
+- `ctaudit-vpc-report.json` (uid `ctaudit-vpc-report`) has a Summary row with the flow, rejected, accepted, byte, distinct source, and finding stats, and flows by action over time. A Findings row lists the security findings by time, severity, rule, title, actor, and detail. A Rejected traffic row has the top rejected sources, destination ports, and destinations. A Traffic row has the top source/destination pairs by bytes, a bar gauge of protocols, and the top network interfaces. It ends with the matching flows as rows. By default ctaudit ships only REJECT flows (`--emit-flows reject`), so its ACCEPT-driven panels stay empty unless the scanner runs with `--emit-flows all`; findings are always sent.
 
-All four take a `loki` data source variable and filter on job, load balancer, web ACL, bucket, or account and region, and regular expressions for client IP and ELB status, or action, or principal and event name, or requester and remote IP. `Top N` sets the table length. Every panel has a description, shown by its (i) icon, that says what it counts. The counts use the same rules as the HTML report: the principal is the ARN, else `invokedBy`, else `userName`, else `principalId`; numeric path segments become `{n}`; a write event is `readOnly=false`, or a missing `readOnly` and an event name that is not a read verb. Two limits apply. The time picker selects Loki timestamps: request and event times for lines shipped with `--loki-time event` (the `serve` default), but scan runs for lines shipped with the one-shot default `--loki-time scan`, whose over-time charts show when lines were shipped. Event-time lines carry no scan time, so shipping the same window twice in event mode doubles every count; give a re-run its own `--push-job`. Tables that group by a high-cardinality field, such as client IP on a busy load balancer, can reach Loki's `max_query_series` limit (500 by default); lower `Top N` does not help there, so narrow the filters or the time range. Import the files in Grafana, or set `grafanaDashboards.enabled: true` in the chart to ship them as a ConfigMap for the Grafana dashboard sidecar.
+All five take a `loki` data source variable and filter on job, load balancer, web ACL, bucket, or account and region, and regular expressions for client IP and ELB status, or action, or principal and event name, or requester and remote IP; the VPC dashboard instead filters on action, VPC ID, and source/destination address regular expressions. `Top N` sets the table length. Every panel has a description, shown by its (i) icon, that says what it counts. The counts use the same rules as the HTML report: the principal is the ARN, else `invokedBy`, else `userName`, else `principalId`; numeric path segments become `{n}`; a write event is `readOnly=false`, or a missing `readOnly` and an event name that is not a read verb. Two limits apply. The time picker selects Loki timestamps: request and event times for lines shipped with `--loki-time event` (the `serve` default), but scan runs for lines shipped with the one-shot default `--loki-time scan`, whose over-time charts show when lines were shipped. Event-time lines carry no scan time, so shipping the same window twice in event mode doubles every count; give a re-run its own `--push-job`. Tables that group by a high-cardinality field, such as client IP on a busy load balancer, can reach Loki's `max_query_series` limit (500 by default); lower `Top N` does not help there, so narrow the filters or the time range. Import the files in Grafana, or set `grafanaDashboards.enabled: true` in the chart to ship them as a ConfigMap for the Grafana dashboard sidecar.
 
 ## Debug logging
 
-`--debug`, or `CTAUDIT_DEBUG=1` in the environment, makes `cloudtrail`, `elb`, `waf`, `s3`, and `serve` log what they do to stderr. The reports on stdout and in files are unchanged. `--log-format json` writes one JSON object per line for log collectors; the default is `text` (`key=value`).
+`--debug`, or `CTAUDIT_DEBUG=1` in the environment, makes `cloudtrail`, `elb`, `waf`, `s3`, `vpc`, and `serve` log what they do to stderr. The reports on stdout and in files are unchanged. `--log-format json` writes one JSON object per line for log collectors; the default is `text` (`key=value`).
 
 The log shows:
 
@@ -354,7 +416,7 @@ It never logs credentials, request headers, or record contents, and URLs have an
 
 ## Running on Kubernetes
 
-`ctaudit serve` turns any of the four subcommands into a long-running scanner for Kubernetes. It rescans a rolling window on a fixed interval, keeps running totals as Prometheus counters on `/metrics`, and streams new matches to Loki. The Helm chart in [`deploy/helm/ctaudit`](deploy/helm/ctaudit) runs one pod per scanner.
+`ctaudit serve` turns any of the five subcommands into a long-running scanner for Kubernetes. It rescans a rolling window on a fixed interval, keeps running totals as Prometheus counters on `/metrics`, and streams new matches to Loki. The Helm chart in [`deploy/helm/ctaudit`](deploy/helm/ctaudit) runs one pod per scanner.
 
 ```bash
 ./ctaudit serve cloudtrail --bucket org-trail --accounts 111122223333 --regions us-east-1 \
@@ -362,6 +424,7 @@ It never logs credentials, request headers, or record contents, and URLs have an
 ./ctaudit serve elb --bucket alb-logs --accounts 111122223333 --regions us-east-1 --lb tiles
 ./ctaudit serve waf --bucket aws-waf-logs-example --accounts 111122223333 --regions us-east-1,cloudfront
 ./ctaudit serve s3 --bucket example-s3-access-logs --prefix logs/
+./ctaudit serve vpc --bucket example-flow-logs --accounts 111122223333 --regions us-east-1
 ```
 
 `serve` takes every flag of the named subcommand plus three of its own:
@@ -372,7 +435,7 @@ It never logs credentials, request headers, or record contents, and URLs have an
 | `--lookback` | `24h` | Size of the rolling window. At least `--interval`, at most `720h`. |
 | `--listen` | `:8080` | HTTP listen address |
 
-`--since`, `--until`, `--html`, `--pdf`, `--pushgateway`, `--jsonl`, and `--fail-on` make no sense for a server and exit 2 if set. `--loki`, `--loki-tenant`, and `--push-job` work as in the one-shot commands; `--loki-time` defaults to `event` here.
+`--since`, `--until`, `--html`, `--pdf`, `--pushgateway`, `--jsonl`, and `--fail-on` make no sense for a server and exit 2 if set. `--loki`, `--loki-tenant`, and `--push-job` work as in the one-shot commands; `--loki-time` defaults to `event` here. `--emit-flows` is allowed under `serve vpc` and works as it does one-shot.
 
 **Incremental scans.** The first scan starts at once. Each scan covers `[now - lookback, now]`, lists the same day prefixes a one-shot run would, and skips every object key an earlier scan already read, so a steady-state scan fetches only newly delivered objects. S3 log objects are immutable, and late deliveries arrive as new keys. A scan commits only after its Loki push succeeds: if Loki fails, no key is marked as read and the next scan retries the whole batch, so lines may be duplicated but are never lost. Objects that fail to read are retried on every scan. Scans never overlap.
 
@@ -382,13 +445,13 @@ It never logs credentials, request headers, or record contents, and URLs have an
 
 | Path | Response |
 |---|---|
-| `/metrics` | Prometheus text: `ctaudit_scans_total{result}` (`ok`, `partial`, `failed`), object, record, and error counters, `ctaudit_findings_total{severity}`, `ctaudit_elb_requests_total{status_class}`, latency and TLS counters, `ctaudit_waf_requests_total{action}`, `ctaudit_waf_findings_total{severity}`, `ctaudit_s3_requests_total{status_class}`, `ctaudit_s3_findings_total{severity}`, `ctaudit_s3_bytes_sent_total`, `ctaudit_last_success_timestamp_seconds`, and `ctaudit_seen_keys`. Every family has a `subcommand` label. |
+| `/metrics` | Prometheus text: `ctaudit_scans_total{result}` (`ok`, `partial`, `failed`), object, record, and error counters, `ctaudit_findings_total{severity}`, `ctaudit_elb_requests_total{status_class}`, latency and TLS counters, `ctaudit_waf_requests_total{action}`, `ctaudit_waf_findings_total{severity}`, `ctaudit_s3_requests_total{status_class}`, `ctaudit_s3_findings_total{severity}`, `ctaudit_s3_bytes_sent_total`, `ctaudit_vpc_flows_total{action}`, `ctaudit_vpc_bytes_total`, `ctaudit_vpc_packets_total`, `ctaudit_vpc_findings_total{severity}`, `ctaudit_last_success_timestamp_seconds`, and `ctaudit_seen_keys`. Every family has a `subcommand` label. |
 | `/report` | The usual self-contained HTML report for the whole window, merged from every scan in it. 503 until the first scan commits. |
 | `/healthz` | `ok` while the process runs. It is not tied to scan success: a failing scan raises an alert, not a restart. |
 
 SIGTERM stops the running scan, flushes Loki, and exits 0 after at most 10 seconds.
 
-**Findings are per tick, not per window.** `serve cloudtrail`, `serve waf`, and `serve s3` run the findings rules (and, for WAF, `--block-threshold`; for S3, `--denied-threshold`, `--delete-threshold`, and `--egress-threshold`) once per tick, over only the records that tick newly saw, and `ctaudit_findings_total` / `ctaudit_waf_findings_total` / `ctaudit_s3_findings_total` add up those per-tick results. A client IP that is blocked 60 times in one tick and 60 more in the next never crosses a `--block-threshold` of 100 in either tick's own findings, even though it would in a one-shot scan of the same window. `/report`, by contrast, re-evaluates the rules once over every record from every merged tick still in the lookback, so its findings and severity can differ from what `/metrics` counted as ticks happened.
+**Findings are per tick, not per window.** `serve cloudtrail`, `serve waf`, `serve s3`, and `serve vpc` run the findings rules (and, for WAF, `--block-threshold`; for S3, `--denied-threshold`, `--delete-threshold`, and `--egress-threshold`) once per tick, over only the records that tick newly saw, and `ctaudit_findings_total` / `ctaudit_waf_findings_total` / `ctaudit_s3_findings_total` / `ctaudit_vpc_findings_total` add up those per-tick results. A client IP that is blocked 60 times in one tick and 60 more in the next never crosses a `--block-threshold` of 100 in either tick's own findings, even though it would in a one-shot scan of the same window; the same goes for a VPC port scanner split across two ticks and `--scan-ports`. `/report`, by contrast, re-evaluates the rules once over every record from every merged tick still in the lookback, so its findings and severity can differ from what `/metrics` counted as ticks happened.
 
 ### Image
 
@@ -484,21 +547,21 @@ Set `debug: true` to pass `--debug` to every scanner, and `logFormat: json` to p
 
 [`deploy/terraform/example`](deploy/terraform/example) is an example Terraform root module that creates the IRSA role and reader policies and installs the chart with the role ARN passed in.
 
-The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `grafanaDashboards.enabled: true` adds a ConfigMap labeled `grafana_dashboard: "1"` that carries the three report dashboards; set `grafanaDashboards.namespace` when the Grafana sidecar watches a different namespace, and `grafanaDashboards.annotations` for a folder, for example `grafana_folder: Security`. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
+The pods run as non-root with a read-only root filesystem, drop every capability, and do not mount a Kubernetes API token. `make helm-lint` lints the chart and checks what it renders. `grafanaDashboards.enabled: true` adds a ConfigMap labeled `grafana_dashboard: "1"` that carries the five report dashboards; set `grafanaDashboards.namespace` when the Grafana sidecar watches a different namespace, and `grafanaDashboards.annotations` for a folder, for example `grafana_folder: Security`. `docs/grafana/ctaudit-serve-dashboard.json` and `docs/grafana/ctaudit-serve-alerts.yaml` are the serve-mode dashboard and alert rules; the alert rules are the same ones the chart's PrometheusRule carries.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | Scan completed; for `cloudtrail`, `waf`, and `s3`, no findings at or above `--fail-on` |
-| 1 | `cloudtrail`, `waf`, and `s3` only: scan completed; findings at or above `--fail-on` exist |
-| 2 | Scan failed: missing command, bad flags, AWS error, unreadable objects, or a failed Loki or Pushgateway push |
+| 0 | Scan completed; for `cloudtrail`, `waf`, `s3`, and `vpc`, no findings at or above `--fail-on` |
+| 1 | `cloudtrail`, `waf`, `s3`, and `vpc` only: scan completed; findings at or above `--fail-on` (default `high` for `vpc`) exist |
+| 2 | Scan failed: missing command, bad flags, AWS error, unreadable objects (a Parquet object or a Hive-partitioned layout for `vpc`), or a failed Loki or Pushgateway push |
 
 Unreadable objects return 2 even when findings exist, because the report may be incomplete. A CI gate must not pass on a partial scan.
 
 ## IAM
 
-`ctaudit` is read-only. It needs `s3:ListBucket` on the log bucket (restricted to the `AWSLogs/` prefix) and `s3:GetObject` on the log objects. It also needs `kms:Decrypt` when the trail uses SSE-KMS. The `elb` command needs the same two S3 permissions on the access log bucket. ELB access logs support only SSE-S3 encryption, so it never needs KMS. The `waf` command needs the same `s3:ListBucket` and `s3:GetObject` on the WAF log bucket; the reader policy must include that bucket too, and no extra permission is needed for the delimiter listing `ctaudit waf` uses to discover web ACL names. The `s3` command needs `s3:ListBucket` on the target bucket, scoped to the target prefix rather than `AWSLogs/`, and `s3:GetObject` on the target bucket; the Terraform reader module in [`iam/cloudtrail-audit-reader`](iam/cloudtrail-audit-reader) scopes listing to `AWSLogs/`, so grant the S3 access log bucket its own policy statement, or a separate module instance, for the target prefix. It never writes to the bucket or changes any AWS resource.
+`ctaudit` is read-only. It needs `s3:ListBucket` on the log bucket (restricted to the `AWSLogs/` prefix) and `s3:GetObject` on the log objects. It also needs `kms:Decrypt` when the trail uses SSE-KMS. The `elb` command needs the same two S3 permissions on the access log bucket. ELB access logs support only SSE-S3 encryption, so it never needs KMS. The `waf` command needs the same `s3:ListBucket` and `s3:GetObject` on the WAF log bucket; the reader policy must include that bucket too, and no extra permission is needed for the delimiter listing `ctaudit waf` uses to discover web ACL names. The `s3` command needs `s3:ListBucket` on the target bucket, scoped to the target prefix rather than `AWSLogs/`, and `s3:GetObject` on the target bucket; the Terraform reader module in [`iam/cloudtrail-audit-reader`](iam/cloudtrail-audit-reader) scopes listing to `AWSLogs/`, so grant the S3 access log bucket its own policy statement, or a separate module instance, for the target prefix. The `vpc` command needs only `s3:ListBucket` and `s3:GetObject` on the flow log bucket: flow logs use SSE-S3 encryption by default, so add `kms:Decrypt` only when the flow log is configured with an SSE-KMS bucket. It never writes to the bucket or changes any AWS resource.
 
 The Terraform module in [`iam/cloudtrail-audit-reader`](iam/cloudtrail-audit-reader) creates that policy. Point `log_bucket_name` at the access log bucket to use it for `ctaudit elb`:
 

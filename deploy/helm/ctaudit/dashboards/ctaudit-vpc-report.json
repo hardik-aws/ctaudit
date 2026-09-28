@@ -1,0 +1,1558 @@
+{
+  "uid": "ctaudit-vpc-report",
+  "title": "ctaudit / VPC Flow Logs report",
+  "description": "Rebuilds the ctaudit vpc report from Loki. By default ctaudit sends only REJECT flows (--emit-flows reject), so ACCEPT panels stay empty unless the scanner runs with --emit-flows all. Findings are always sent.",
+  "tags": [
+    "ctaudit",
+    "vpc",
+    "loki"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ctaudit"
+      ],
+      "targetBlank": false,
+      "title": "ctaudit",
+      "type": "dashboards"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "loki",
+        "label": "Loki",
+        "query": "loki",
+        "current": {},
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "options": []
+      },
+      {
+        "type": "query",
+        "name": "job",
+        "label": "Job",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "job",
+          "stream": "",
+          "refId": "Var"
+        },
+        "definition": "label_values(job)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "custom",
+        "name": "action",
+        "label": "Action",
+        "query": "ACCEPT,REJECT",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "options": [
+          {
+            "text": "ACCEPT",
+            "value": "ACCEPT",
+            "selected": false
+          },
+          {
+            "text": "REJECT",
+            "value": "REJECT",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "type": "query",
+        "name": "vpc",
+        "label": "VPC",
+        "datasource": {
+          "type": "loki",
+          "uid": "${loki}"
+        },
+        "query": {
+          "type": 1,
+          "label": "vpc",
+          "stream": "{job=~\"$job\", subcommand=\"vpc\"}",
+          "refId": "Var"
+        },
+        "definition": "label_values({job=~\"$job\", subcommand=\"vpc\"}, vpc)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "type": "textbox",
+        "name": "src",
+        "label": "Source (regex)",
+        "description": "Regular expression on the source address.",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "dst",
+        "label": "Destination (regex)",
+        "description": "Regular expression on the destination address.",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "top",
+        "label": "Top N",
+        "query": "10,20,50",
+        "current": {
+          "text": "20",
+          "value": "20"
+        },
+        "hide": 0,
+        "options": [
+          {
+            "text": "10",
+            "value": "10",
+            "selected": false
+          },
+          {
+            "text": "20",
+            "value": "20",
+            "selected": true
+          },
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Summary",
+      "collapsed": false,
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Flows",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Matching flows in the time range. Follows the dashboard filters.",
+      "id": 2,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rejected",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | action=\"REJECT\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Matching flows with a REJECT action.",
+      "id": 3,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Accepted",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | action=\"ACCEPT\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Matching flows with an ACCEPT action.",
+      "id": 4,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Bytes",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(sum_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json bytes=\"bytes\" | unwrap bytes [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Bytes in matching flows. By default only REJECT flows are sent (--emit-flows reject).",
+      "id": 5,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Distinct sources",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "count(sum by (source) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" [$__range])))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Distinct source addresses in matching flows. Follows the dashboard filters.",
+      "id": 6,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Findings",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum(count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"finding\"} [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "Network security findings in the time range.",
+      "id": 7,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Flows by action",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (action) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{action}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the flow's start time, so the time range selects flows. Lines shipped with --loki-time scan are stored at the scan time; the real flow time is the event_time column.",
+      "id": 8,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Findings",
+      "collapsed": false,
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Findings (newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"vpc\", kind=\"finding\"}",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "severity",
+                "rule",
+                "title",
+                "actor",
+                "detail"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "severity": 1,
+              "rule": 2,
+              "title": 3,
+              "actor": 4,
+              "detail": 5
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "severity": "Severity",
+              "rule": "Rule",
+              "title": "Title",
+              "actor": "Actor",
+              "detail": "Detail"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Findings do not carry an action or vpc label, so this table ignores those filters. Lines shipped with --loki-time event (the serve default) are stored at the finding's flow time; lines shipped with --loki-time scan are stored at the scan time.",
+      "id": 10,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 10
+      }
+    },
+    {
+      "type": "row",
+      "title": "Rejected traffic",
+      "collapsed": false,
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Rejected flows by source",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (source) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | action=\"REJECT\" | keep source [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Source",
+              "Last *": "Flows"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Follows the dashboard filters.",
+      "id": 12,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Rejected destination ports",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (dst_port) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json dst_port=\"dst_port\" | action=\"REJECT\" | dst_port!=\"\" | keep dst_port [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{dst_port}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Dst port",
+              "Last *": "Flows"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Follows the dashboard filters.",
+      "id": 13,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 25,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Rejected destinations",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (destination) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | action=\"REJECT\" | keep destination [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{destination}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Destination",
+              "Last *": "Flows"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Follows the dashboard filters.",
+      "id": 14,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 25,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Traffic",
+      "collapsed": false,
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top pairs by bytes",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (source, destination) (sum_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json bytes=\"bytes\" | unwrap bytes [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{source}} -> {{destination}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Source -> destination",
+              "Last *": "Bytes"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Source and destination pairs that sent the most bytes. Follows the dashboard filters.",
+      "id": 16,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Protocols",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "sum by (protocol) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json protocol=\"protocol\" | protocol!=\"\" | keep protocol [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{protocol}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 24,
+        "legend": {
+          "showLegend": false
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value/",
+          "values": true
+        },
+        "text": {}
+      },
+      "description": "Share of matching flows by protocol. Follows the dashboard filters.",
+      "id": 17,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 6,
+        "h": 8
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Interfaces",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "topk($top, sum by (interface_id) (count_over_time({job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json interface_id=\"interface_id\" | keep interface_id [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{interface_id}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Last *",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "Interface",
+              "Last *": "Flows"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Follows the dashboard filters.",
+      "id": 18,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 34,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Matching flows",
+      "collapsed": false,
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Flows (newest 500 lines)",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "expr": "{job=~\"$job\", subcommand=\"vpc\", kind=\"flow\", action=~\"$action\", vpc=~\"$vpc\"} | json source=\"source\", destination=\"destination\" | __error__=\"\" | source=~\"$src\" | destination=~\"$dst\" | json",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "event_time",
+                "interface_id",
+                "action",
+                "source",
+                "src_port",
+                "destination",
+                "dst_port",
+                "protocol",
+                "packets",
+                "bytes",
+                "flow_direction",
+                "vpc_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "event_time": 0,
+              "interface_id": 1,
+              "action": 2,
+              "source": 3,
+              "src_port": 4,
+              "destination": 5,
+              "dst_port": 6,
+              "protocol": 7,
+              "packets": 8,
+              "bytes": 9,
+              "flow_direction": 10,
+              "vpc_id": 11
+            },
+            "renameByName": {
+              "event_time": "Time",
+              "interface_id": "Interface",
+              "action": "Action",
+              "source": "Source",
+              "src_port": "Src port",
+              "destination": "Destination",
+              "dst_port": "Dst port",
+              "protocol": "Protocol",
+              "packets": "Packets",
+              "bytes": "Bytes",
+              "flow_direction": "Direction",
+              "vpc_id": "VPC"
+            },
+            "excludeByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Lines shipped with --loki-time event (the serve default) are stored at the flow's start time, so the time range selects flows. Lines shipped with --loki-time scan are stored at the scan time; the real flow time is the event_time column. By default only REJECT flows are sent (--emit-flows reject).",
+      "id": 20,
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 24,
+        "h": 12
+      }
+    }
+  ]
+}
